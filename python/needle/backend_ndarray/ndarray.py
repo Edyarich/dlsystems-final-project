@@ -717,7 +717,6 @@ def array(a, dtype="float32", device=None):
     assert dtype == "float32"
     return NDArray(a, device=device)
 
-
 def empty(shape, dtype="float32", device=None):
     device = device if device is not None else default_device()
     return device.empty(shape, dtype)
@@ -727,10 +726,18 @@ def full(shape, fill_value, dtype="float32", device=None):
     device = device if device is not None else default_device()
     return device.full(shape, fill_value, dtype)
 
+def linspace(start, stop, num, device=None):
+    step = (stop - start) / (num - 1)
+    handle = [start + step * i for i in range(num)]
+    device = device if device is not None else default_device()
+    
+    return NDArray(np.linspace(start, stop, num), device=device)
+
+def cumprod(array, axis=0):
+    return NDArray(np.cumprod(array.numpy(), axis=axis), device=array.device)
 
 def ones(shape, dtype="float32", device=None):
     return full(shape, 1.0, dtype, device)
-
 
 def zeros(shape, dtype="float32", device=None):
     return full(shape, 0.0, dtype, device)

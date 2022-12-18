@@ -2,7 +2,7 @@
 """
 from typing import List
 from needle.autograd import Tensor
-from needle import ops
+from needle import ops, array_api
 import needle.init as init
 import numpy as np
 
@@ -673,6 +673,23 @@ class LSTM(Module):
 
         return ops.stack(output, 0), (ops.stack(h0_arr, 0), ops.stack(c0_arr, 0))
 
+class Diffusion(Module):
+    def __init__(self, timesteps, schedule="linear", start=0.0001, end=0.02):
+        if schedule == "linear":
+            self.betas = array_api.linspace(start, end, num=timesteps)
+            
+        alphas = 1.0 - self.betas
+        alphas_cumprod = array_api.cumprod(alphas, axis=0)
+
+        self.sqrt_alphas_cumprod = (alphas_cumprod)**(1/2)
+        self.sqrt_one_minus_alphas_cumprod = (1. - alphas_cumprod)**(1/2)
+        
+        # Начальная точка
+        self.t = 0
+
+    def forward(self, X):
+        return ops.noise(X, self.sqrt_alphas_cumprod[self.t], self.sqrt_one_minus_alphas_cumprod[self.t])
+        
 
 class Embedding(Module):
     def __init__(self, num_embeddings, embedding_dim, device=None, dtype="float32"):

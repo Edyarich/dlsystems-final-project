@@ -1,0 +1,3 @@
+1) array_api.linspace кривой через np.linspace, neeedle/backend_ndarray/ndarray.py
+тесты пока не добавил
+2) needle/ops.py forward noising step
