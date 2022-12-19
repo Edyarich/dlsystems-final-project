@@ -4,7 +4,9 @@ import os
 import pickle
 import struct
 import gzip
-from typing import Iterator, Optional, List, Sized, Union, Iterable, Any
+import cv2
+from typing import Iterator, Optional, List, Tuple, Sized, Union, Iterable, Any, \
+    Callable
 from needle import backend_ndarray as nd
 from needle.backend_ndarray.ndarray import BackendDevice
 
@@ -28,7 +30,7 @@ class RandomFlipHorizontal(Transform):
         Note: use the provided code to provide randomness, for easier testing
         """
         flip_img = np.random.rand() < self.p
-        
+
         if flip_img:
             return img[:, ::-1, :]
         else:
@@ -42,15 +44,16 @@ class RandomCrop(Transform):
     def __call__(self, img):
         """ Zero pad and then randomly crop an image.
         Args:
-             img: H x W x C NDArray of an image
-        Return 
+            img: H x W x C NDArray of an image
+        Return
             H x W x C NDArray of cliped image
         Note: generate the image shifted by shift_x, shift_y specified below
         """
-        shift_x, shift_y = np.random.randint(low=-self.padding, high=self.padding+1, size=2)
-        padded_img = np.pad(img, 
+        shift_x, shift_y = np.random.randint(low=-self.padding,
+                                             high=self.padding + 1, size=2)
+        padded_img = np.pad(img,
                             ((self.padding, self.padding),
-                             (self.padding, self.padding), 
+                             (self.padding, self.padding),
                              (0, 0)),
                             constant_values=0)
 
@@ -58,7 +61,54 @@ class RandomCrop(Transform):
         y_start = shift_y + self.padding
         height, width, _ = img.shape
 
-        return padded_img[x_start:x_start+height, y_start:y_start+width, :]
+        return padded_img[x_start:x_start + height, y_start:y_start + width, :]
+
+
+class Lambda(Transform):
+    def __init__(self, func: Callable):
+        self.func = func
+
+    def __call__(self, img):
+        return self.func(img)
+
+
+class Resize(Transform):
+    def __init__(self, sizes: Tuple[int]):
+        self.height, self.width = sizes
+
+    def __call__(self, img, **cv2_resize_kwargs):
+        """
+        Resize image
+        Args:
+            img: H x W x C np.ndarray of an image
+        Return:
+            self.height x self.width x C NDArray of resized image
+        """
+        resized_img = cv2.resize(
+            img,
+            (self.height, self.width),
+            **cv2_resize_kwargs
+        )
+        return resized_img
+
+
+class ToTensor(Transform):
+    def __init__(self, device: Optional[BackendDevice] = None,
+                 dtype: str = "float32", requires_grad: bool = False):
+        self.device = device
+        self.dtype = dtype
+        self.requires_grad = requires_grad
+
+    def __call__(self, img):
+        """
+        type(img): NDArray ==> Tensor
+        Args:
+            img: H x W x C NDArray (or np.ndarray) of an image
+        Return:
+            H x W x C Tensor of an image
+        """
+        return Tensor(img, device=self.device, dtype=self.dtype,
+                      requires_grad=self.requires_grad)
 
 
 class Dataset:
@@ -101,10 +151,10 @@ class DataLoader:
     batch_size: Optional[int]
 
     def __init__(
-        self,
-        dataset: Dataset,
-        batch_size: Optional[int] = 1,
-        shuffle: bool = False,
+            self,
+            dataset: Dataset,
+            batch_size: Optional[int] = 1,
+            shuffle: bool = False,
     ):
 
         self.dataset = dataset
@@ -119,7 +169,7 @@ class DataLoader:
             self.ordering = self._get_order(indices)
 
     def _get_order(self, indices):
-        return np.array_split(indices, 
+        return np.array_split(indices,
                               range(self.batch_size,
                                     len(indices),
                                     self.batch_size))
@@ -146,15 +196,15 @@ class DataLoader:
 
 class MNISTDataset(Dataset):
     def __init__(
-        self,
-        image_filename: str,
-        label_filename: str,
-        transforms: Optional[List] = None,
+            self,
+            image_filename: str,
+            label_filename: str,
+            transforms: Optional[List] = None,
     ):
         super().__init__(transforms)
         self.images = None
         self.labels = None
-        
+
         self._parse_mnist(image_filename, label_filename)
 
     def _parse_mnist(self, image_filename: str, label_filename: str) -> None:
@@ -190,7 +240,7 @@ class MNISTDataset(Dataset):
 
         assert imgs_cnt == labels_cnt
 
-        decoded_samples = struct.unpack(f'>{imgs_cnt*rows_cnt*cols_cnt}B', 
+        decoded_samples = struct.unpack(f'>{imgs_cnt * rows_cnt * cols_cnt}B',
                                         samples[16:])
         decoded_labels = struct.unpack(f'>{labels_cnt}B', labels[8:])
 
@@ -198,14 +248,14 @@ class MNISTDataset(Dataset):
         samples = samples.reshape(imgs_cnt, rows_cnt, cols_cnt, 1)
         samples -= samples.min()
         samples /= (samples.max() - samples.min())
-        
+
         self.images = samples
         self.labels = np.array(decoded_labels, dtype=np.uint8)
 
     def __getitem__(self, index) -> object:
         img, label = self.images[index], self.labels[index]
         transformed_img = self.apply_transforms(img)
-        
+
         return transformed_img, label
 
     def __len__(self) -> int:
@@ -214,10 +264,10 @@ class MNISTDataset(Dataset):
 
 class CIFAR10Dataset(Dataset):
     def __init__(
-        self,
-        base_folder: str,
-        train: bool,
-        transforms: Optional[List] = None
+            self,
+            base_folder: str,
+            train: bool,
+            transforms: Optional[List] = None
     ):
         """
         Parameters:
@@ -235,7 +285,7 @@ class CIFAR10Dataset(Dataset):
 
     def _parse_cifar(self, base_folder: str, train: bool):
         batch_names = [f'data_batch_{i}' for i in range(1, 6)] if train \
-                        else ['test_batch']
+            else ['test_batch']
 
         images, labels = [], []
         for batch_name in batch_names:
@@ -248,8 +298,7 @@ class CIFAR10Dataset(Dataset):
             labels.append(dct[b'labels'])
 
         np_images = np.array(images, dtype=np.float32) / 255
-        np_images = np.transpose(np_images, (0, 2, 1)).reshape(
-            -1, 3, 32, 32)
+        np_images = np_images.reshape(-1, 3, 32, 32)
         np_labels = np.array(labels).reshape(-1)
 
         return np_images, np_labels
@@ -261,7 +310,7 @@ class CIFAR10Dataset(Dataset):
         """
         if index >= len(self):
             raise IndexError('CIFAR10 index out of range')
-        
+
         return self.apply_transforms(self.images[index]), self.labels[index]
 
     def __len__(self) -> int:
@@ -269,6 +318,34 @@ class CIFAR10Dataset(Dataset):
         Returns the total number of examples in the dataset
         """
         return self.labels.size
+
+
+class LandscapesDataset(Dataset):
+    def __init__(self, files: List[str], img_size: int = 256,
+                 extra_transforms: Optional[List] = None):
+        basic_transforms = [
+            Lambda(lambda img: img.astype(np.float32)),
+            Lambda(lambda img: img / 255 * 2 - 1),
+            Resize((img_size, img_size))
+        ]
+        if extra_transforms is not None:
+            basic_transforms += extra_transforms
+
+        super().__init__(basic_transforms)
+        self.files = sorted(files)
+
+    def load_sample(self, filename: str) -> np.ndarray:
+        img = cv2.imread(filename)
+        return img
+
+    def __getitem__(self, index):
+        if index >= len(self):
+            raise IndexError('LandscapesDataset index out of range')
+
+        return self.apply_transforms(self.load_sample(self.files[index]))
+
+    def __len__(self):
+        return len(self.files)
 
 
 class NDArrayDataset(Dataset):
@@ -291,6 +368,7 @@ class Dictionary(object):
     idx2word: list of words in the dictionary, in the order they were added
         to the dictionary (i.e. each word only appears once in this list)
     """
+
     def __init__(self):
         self.word2idx = {}
         self.idx2word = []
@@ -305,7 +383,7 @@ class Dictionary(object):
         if word not in self.word2idx:
             self.word2idx[word] = len(self.idx2word)
             self.idx2word.append(word)
-        
+
         return self.word2idx[word]
 
     def __len__(self):
@@ -323,7 +401,8 @@ class Corpus(object):
 
     def __init__(self, base_dir: str, max_lines: Optional[int] = None):
         self.dictionary = Dictionary()
-        self.train = self.tokenize(os.path.join(base_dir, 'train.txt'), max_lines)
+        self.train = self.tokenize(os.path.join(base_dir, 'train.txt'),
+                                   max_lines)
         self.test = self.tokenize(os.path.join(base_dir, 'test.txt'), max_lines)
 
     def tokenize(self, path: str, max_lines: Optional[int] = None):
@@ -350,7 +429,7 @@ class Corpus(object):
                 for word in sent.strip().split():
                     word_id = self.dictionary.add_word(word)
                     ids.append(word_id)
-                
+
                 ids.append(eos_id)
 
         return ids
@@ -373,14 +452,15 @@ def batchify(data: list, batch_size: int, device: BackendDevice, dtype: type):
     Returns the data as a numpy array of shape (nbatch, batch_size).
     """
     k_batches = len(data) // batch_size
-    data = data[:k_batches*batch_size]
+    data = data[:k_batches * batch_size]
 
     return np.array(
-        [data[i:i+batch_size] for i in range(0, len(data), batch_size)]
+        [data[i:i + batch_size] for i in range(0, len(data), batch_size)]
     )
 
 
-def get_batch(batches: np.ndarray, i: int, bptt: int, device: BackendDevice = None, dtype: type = None):
+def get_batch(batches: np.ndarray, i: int, bptt: int,
+              device: BackendDevice = None, dtype: type = None):
     """
     get_batch subdivides the source data into chunks of length bptt.
     If source is equal to the example output of the batchify function, with
@@ -399,5 +479,6 @@ def get_batch(batches: np.ndarray, i: int, bptt: int, device: BackendDevice = No
     data - Tensor of shape (bptt, bs) with cached data as NDArray
     target - Tensor of shape (bptt*bs,) with cached data as NDArray
     """
-    return Tensor(batches[i:i+bptt], device=device, dtype=dtype), \
-        Tensor(batches[i+1:i+bptt+1].reshape(-1), device=device, dtype=dtype)
+    return Tensor(batches[i:i + bptt], device=device, dtype=dtype), \
+           Tensor(batches[i + 1:i + bptt + 1].reshape(-1), device=device,
+                  dtype=dtype)

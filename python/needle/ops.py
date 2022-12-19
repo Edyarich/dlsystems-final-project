@@ -208,7 +208,7 @@ class Permute(TensorOp):
         if not (axes is None or set(axes) == set(range(len(axes)))):
             raise ValueError('Wrong new axes')
 
-        self.axes = list(range(axes))[::-1] if axes is None else axes
+        self.axes = axes
 
     def compute(self, a):
         if isinstance(a, np.ndarray):
@@ -227,7 +227,7 @@ class Permute(TensorOp):
 
 
 def permute(a, axes=None):
-    return Permute(axes)(a)        
+    return Permute(axes)(a)
 
 
 class Reshape(TensorOp):
@@ -283,7 +283,7 @@ class BroadcastTo(TensorOp):
         elif node.inputs[0].size == 1:
             return out_grad.sum().reshape(inp_shape)
         
-        shape_mask = BroadcastTo.find_first_occ(out_grad.shape, 
+        shape_mask = BroadcastTo.find_first_occ(out_grad.shape,
                                                 inp_shape)
         rev_shape_mask = [not bool_val for bool_val in shape_mask]
 
