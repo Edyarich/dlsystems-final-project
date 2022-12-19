@@ -1,3 +1,0 @@
-/home/gensenju/Documents/dlsystems-final-project/build/CMakeFiles/ndarray_backend_cpu.dir
-/home/gensenju/Documents/dlsystems-final-project/build/CMakeFiles/edit_cache.dir
-/home/gensenju/Documents/dlsystems-final-project/build/CMakeFiles/rebuild_cache.dir

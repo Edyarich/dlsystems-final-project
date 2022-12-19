@@ -153,6 +153,9 @@ class SoftmaxLoss(Module):
 
         return ops.mean(log_sum_exp - y_logits)
 
+class L1Loss(Module):
+    def forward(self, pred: Tensor, target: Tensor):
+        return ops.abs(pred, target).mean()
 
 class BatchNorm1d(Module):
     def __init__(self, dim, eps=1e-5, momentum=0.1, device=None, dtype="float32"):
@@ -674,22 +677,102 @@ class LSTM(Module):
         return ops.stack(output, 0), (ops.stack(h0_arr, 0), ops.stack(c0_arr, 0))
 
 class Diffusion(Module):
-    def __init__(self, timesteps, schedule="linear", start=0.0001, end=0.02):
-        if schedule == "linear":
-            self.betas = array_api.linspace(start, end, num=timesteps)
+    def __init__(
+        self, 
+        timesteps, 
+        beta_schedule="linear", 
+        loss_type = "l1",
+        device=None
+        ):
+        if beta_schedule == 'linear':
+            betas = linear_beta_schedule(timesteps, device=device)
+        elif beta_schedule == 'cosine':
+            betas = cosine_beta_schedule(timesteps, device=device)
+        else:
+            raise ValueError(f'unknown beta schedule {beta_schedule}')
+
+        if loss_type == "l1":
+            self.loss_fn = L1Loss
+        else:
+            raise NotImplementedError("Loss except L1 is not implemented yet")
             
-        alphas = 1.0 - self.betas
+        alphas = 1.0 - betas
         alphas_cumprod = array_api.cumprod(alphas, axis=0)
 
-        self.sqrt_alphas_cumprod = (alphas_cumprod)**(1/2)
-        self.sqrt_one_minus_alphas_cumprod = (1. - alphas_cumprod)**(1/2)
+        self.sqrt_alphas_cumprod = Tensor((alphas_cumprod)**(1/2)).data
+        self.sqrt_one_minus_alphas_cumprod = Tensor((1. - alphas_cumprod)**(1/2)).data
         
         # Начальная точка
         self.t = 0
 
-    def forward(self, X):
-        return ops.noise(X, self.sqrt_alphas_cumprod[self.t], self.sqrt_one_minus_alphas_cumprod[self.t])
+    def q_sample(self, x_0, t):
+        '''
+        q_sample - sample function in forward process
+        '''
+        shape = x_0.shape
+        noise = init.randn(*shape).reshape(shape).data
         
+        return (
+            extract(self.sqrt_alphas_cumprod, t, x_0.shape).broadcast_to(shape) * x_0 +
+            extract(self.sqrt_one_minus_alphas_cumprod, t, x_0.shape).broadcast_to(shape) * noise
+        )
+
+    def get_q_sample(self, x_0, t:int):
+        t = Tensor(np.random.randint(0, t, (x_0.shape[0],)))
+        return self.q_sample(x_0, t)
+
+    def forward(self, X):
+        self.sqrt_alpha_cumprod = self.sqrt_alphas_cumprod[self.t]
+        self.sqrt_one_minus_alpha_cumprod = self.sqrt_one_minus_alphas_cumprod[self.t]
+
+        noise = init.randn(X.shape, device=X.device)
+        return self.sqrt_alpha_cumprod * X + self.sqrt_one_minus_alpha_cumprod * noise, noise
+
+def extract(a: Tensor, t, x_shape, device=None):
+    '''
+    Same logics as a.gather(-1, t)
+    '''
+    # import torch
+    # a = torch.Tensor(a.numpy())
+    # if isinstance(t, int):
+    #     t = torch.randint(t, t+1, (1,))
+    # if isinstance(t, Tensor):
+    #     t = torch.Tensor(t.numpy())
+    # else:
+    #     t = torch.Tensor(t)
+
+    # b, *_ = t.shape
+    # out = a.gather(-1, t)
+    # return Tensor(out.reshape(b, *((1,) * (len(x_shape) - 1))).numpy())
+    
+    b, *_ = t.shape
+    device = array_api.default_device() if device is None else device
+    out_handle = device.empty((b, ))
+    
+    for i in range(b):
+        out_handle[i] = a.cached_data[int(t.numpy()[i])]
+    
+    return Tensor(out_handle, device=device).reshape(
+            (b, *((1,) * (len(x_shape) - 1)))
+            )
+
+def linear_beta_schedule(timesteps, device=None):
+    scale = 1000 / timesteps
+    beta_start = scale * 0.0001
+    beta_end = scale * 0.02
+    return Tensor(array_api.linspace(beta_start, beta_end, timesteps), dtype="float32", device=device)
+
+def cosine_beta_schedule(timesteps, s = 0.008, device=None):
+    """
+    cosine schedule
+    as proposed in https://openreview.net/forum?id=-NEXDKk8gZ
+    """
+    steps = timesteps + 1
+    x = np.linspace(0, timesteps, steps)
+    alphas_cumprod = np.cos(((x / timesteps) + s) / (1 + s) * np.pi * 0.5) ** 2
+    alphas_cumprod = alphas_cumprod / alphas_cumprod[0]
+    betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
+    return Tensor(np.clip(betas, 0, 0.999), device=device, dtype="float32")
 
 class Embedding(Module):
     def __init__(self, num_embeddings, embedding_dim, device=None, dtype="float32"):

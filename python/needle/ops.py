@@ -801,24 +801,36 @@ class Conv(TensorOp):
 def conv(a, b, stride=1, padding=1, dilation=1):
     return Conv(stride, padding, dilation)(a, b)
 
-class Noise(TensorOp):
-    def __init__(self, sqrt_alpha_cumprod, sqrt_one_minus_alpha_cumprod):
-        self.sqrt_alpha_cumprod = sqrt_alpha_cumprod
-        self.sqrt_one_minus_alpha_cumprod = sqrt_one_minus_alpha_cumprod
+# class Noise(TensorOp):
+#     def __init__(self, sqrt_alpha_cumprod, sqrt_one_minus_alpha_cumprod):
+#         self.sqrt_alpha_cumprod = sqrt_alpha_cumprod
+#         self.sqrt_one_minus_alpha_cumprod = sqrt_one_minus_alpha_cumprod
 
 
-    def compute(self, a):
-        '''
-        Перегоняет исходное изображение на зашумленный шаг t, отсюда и пересчитанные альфы
-        '''
-        noise = init.randn(a.shape, device=a.device)
-        return self.sqrt_alpha_cumprod * a + self.sqrt_one_minus_alpha_cumprod * noise, noise
+#     def compute(self, a):
+#         '''
+#         Перегоняет исходное изображение на зашумленный шаг t, отсюда и пересчитанные альфы
+#         '''
+#         noise = init.randn(a.shape, device=a.device)
+#         return self.sqrt_alpha_cumprod * a + self.sqrt_one_minus_alpha_cumprod * noise, noise
+
+#     def gradient(self, out_grad, node):
+#         raise NotImplementedError
+
+# def noise(a, sqrt_alpha_cumprod, sqrt_one_minus_alpha_cumprod):
+#     return Noise(sqrt_alpha_cumprod, sqrt_one_minus_alpha_cumprod)(a)
+
+class Abs(TensorOp):
+    def compute(self, X: NDArray):
+        return array_api.maximum(X, -X)
 
     def gradient(self, out_grad, node):
-        raise NotImplementedError
+        X = node.inputs[0]
+        mask = -2 * (X < 0) + 1
+        return out_grad * mask
 
-def noise(a, sqrt_alpha_cumprod, sqrt_one_minus_alpha_cumprod):
-    return Noise(sqrt_alpha_cumprod, sqrt_one_minus_alpha_cumprod)(a)
+def abs(a):
+    return Abs()(a)
 
 # Helper functions
 def get_unsq_outp_shape(inp_shape: List[int], axes: Optional[tuple] = None):

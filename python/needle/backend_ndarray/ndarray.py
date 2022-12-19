@@ -727,10 +727,7 @@ def full(shape, fill_value, dtype="float32", device=None):
     return device.full(shape, fill_value, dtype)
 
 def linspace(start, stop, num, device=None):
-    step = (stop - start) / (num - 1)
-    handle = [start + step * i for i in range(num)]
     device = device if device is not None else default_device()
-    
     return NDArray(np.linspace(start, stop, num), device=device)
 
 def cumprod(array, axis=0):

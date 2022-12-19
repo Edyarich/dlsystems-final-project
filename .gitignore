@@ -1,1 +1,5 @@
 data/
+build/
+**/.ipynb_checkpoints
+*.pyc
+done list.txt
