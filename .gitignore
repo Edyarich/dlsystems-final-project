@@ -1,0 +1,9 @@
+.idea/
+build/
+data/cifar-10-batches-py
+data/landscapes/
+data/cifar-10-python.tar.gz
+.mypy_cache/
+*.pyc
+*.so
+Makefile
