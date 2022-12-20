@@ -516,6 +516,17 @@ struct Exp {
   }
 };
 
+struct Sin {
+  __device__ scalar_t operator () (const scalar_t& elem) {
+    return std::sin(elem);
+  }
+};
+
+struct Cos {
+  __device__ scalar_t operator () (const scalar_t& elem) {
+    return std::cos(elem);
+  }
+};
 
 struct Tanh {
   __device__ scalar_t operator () (const scalar_t& elem) {
@@ -601,6 +612,15 @@ void EwiseExp(const CudaArray& a, CudaArray* out) {
   UnaryOpKernel<Exp><<<dim.grid, dim.block>>>(a.ptr, out->ptr, out->size);
 }
 
+void EwiseSin(const CudaArray& a, CudaArray* out) {
+  CudaDims dim = CudaOneDim(out->size);
+  UnaryOpKernel<Sin><<<dim.grid, dim.block>>>(a.ptr, out->ptr, out->size);
+}
+
+void EwiseCos(const CudaArray& a, CudaArray* out) {
+  CudaDims dim = CudaOneDim(out->size);
+  UnaryOpKernel<Cos><<<dim.grid, dim.block>>>(a.ptr, out->ptr, out->size);
+}
 
 void EwiseTanh(const CudaArray& a, CudaArray* out) {
   CudaDims dim = CudaOneDim(out->size);

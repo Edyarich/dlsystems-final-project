@@ -548,6 +548,16 @@ class NDArray:
         self.device.ewise_exp(self.compact()._handle, out._handle)
         return out
 
+    def sin(self):
+        out = NDArray.make(self.shape, device=self.device)
+        self.device.ewise_sin(self.compact()._handle, out._handle)
+        return out
+
+    def cos(self):
+        out = NDArray.make(self.shape, device=self.device)
+        self.device.ewise_cos(self.compact()._handle, out._handle)
+        return out
+
     def tanh(self):
         out = NDArray.make(self.shape, device=self.device)
         self.device.ewise_tanh(self.compact()._handle, out._handle)
@@ -805,3 +815,9 @@ def mean(a, axis=None, keepdims=False):
 
 def var(a, axis=None, keepdims=False):
     return (a**2).mean(axis, keepdims) - a.mean(axis, keepdims)**2
+
+def sin(a):
+    return a.sin()
+
+def cos(a):
+    return a.cos()

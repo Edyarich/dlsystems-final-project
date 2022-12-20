@@ -156,6 +156,10 @@ class SoftmaxLoss(Module):
 class L1Loss(Module):
     def forward(self, pred: Tensor, target: Tensor):
         return ops.abs(pred, target).mean()
+    
+class L2Loss(Module):
+    def forward(self, pred: Tensor, target: Tensor):
+        return ((target - pred) ** 2).mean()
 
 class BatchNorm1d(Module):
     def __init__(self, dim, eps=1e-5, momentum=0.1, device=None, dtype="float32"):
@@ -676,6 +680,21 @@ class LSTM(Module):
 
         return ops.stack(output, 0), (ops.stack(h0_arr, 0), ops.stack(c0_arr, 0))
 
+class SinusoidalPosEmb(Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.dim = dim
+
+    def forward(self, x):
+        import math
+        device = x.device
+        half_dim = self.dim // 2
+        emb = math.log(10000) / (half_dim - 1)
+        emb = ops.exp(Tensor(range(half_dim), device=device) * -emb)
+        emb = x.broadcast_to((x.shape[0], 1)) * emb.broadcast_to((emb.shape[0], 1))
+        emb = ops.Stack((ops.sin(emb), ops.cos(emb)), dim=1)
+        return emb
+
 class Diffusion(Module):
     def __init__(
         self, 
@@ -693,14 +712,16 @@ class Diffusion(Module):
 
         if loss_type == "l1":
             self.loss_fn = L1Loss
+        elif loss_type == "l2":
+            self.loss_fn = L2Loss
         else:
-            raise NotImplementedError("Loss except L1 is not implemented yet")
+            raise NotImplementedError(f"Unknown loss {loss_type}")
             
         alphas = 1.0 - betas
         alphas_cumprod = array_api.cumprod(alphas, axis=0)
 
-        self.sqrt_alphas_cumprod = Tensor((alphas_cumprod)**(1/2)).data
-        self.sqrt_one_minus_alphas_cumprod = Tensor((1. - alphas_cumprod)**(1/2)).data
+        self.sqrt_alphas_cumprod = Tensor((alphas_cumprod)**(1/2), device=device).data
+        self.sqrt_one_minus_alphas_cumprod = Tensor((1. - alphas_cumprod)**(1/2), device=device).data
         
         # Начальная точка
         self.t = 0
@@ -708,9 +729,12 @@ class Diffusion(Module):
     def q_sample(self, x_0, t):
         '''
         q_sample - sample function in forward process
+    
+        Gets x_0 in range [0, 1) as input
         '''
+        x_0 = normalize_minus_one_to_one(x_0)
         shape = x_0.shape
-        noise = init.randn(*shape).reshape(shape).data
+        noise = init.rand(*shape).data
         
         return (
             extract(self.sqrt_alphas_cumprod, t, x_0.shape).broadcast_to(shape) * x_0 +
@@ -718,8 +742,15 @@ class Diffusion(Module):
         )
 
     def get_q_sample(self, x_0, t:int):
-        t = Tensor(np.random.randint(0, t, (x_0.shape[0],)))
-        return self.q_sample(x_0, t)
+        '''
+        Gets x_0 in range [0, 1) as input
+        '''
+        x_0 = normalize_minus_one_to_one(x_0)
+        t = Tensor([t])
+        out = self.q_sample(x_0, t)
+
+        out = (out + 1) / 2
+        return out / out.numpy().max()
 
     def forward(self, X):
         self.sqrt_alpha_cumprod = self.sqrt_alphas_cumprod[self.t]
@@ -773,6 +804,9 @@ def cosine_beta_schedule(timesteps, s = 0.008, device=None):
     alphas_cumprod = alphas_cumprod / alphas_cumprod[0]
     betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
     return Tensor(np.clip(betas, 0, 0.999), device=device, dtype="float32")
+
+def normalize_minus_one_to_one(img):
+    return img * 2 - 1
 
 class Embedding(Module):
     def __init__(self, num_embeddings, embedding_dim, device=None, dtype="float32"):
