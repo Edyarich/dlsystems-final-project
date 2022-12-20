@@ -264,7 +264,8 @@ class Conv(Module):
     """
     def __init__(self, in_channels: int, out_channels: int, kernel_size: int,
                  stride: int = 1, padding: Optional[int] = None,
-                 bias: int = True, device=None, dtype: str = "float32"):
+                 bias: int = True, device=None, dtype: str = "float32",
+                 flip_kernel: bool = False):
         super().__init__()
         if isinstance(kernel_size, tuple):
             kernel_size = kernel_size[0]
@@ -276,6 +277,7 @@ class Conv(Module):
         self.stride = stride
         self.padding = (kernel_size - 1) // 2 if padding is None else padding
 
+        self.flip_kernel = flip_kernel
         self.has_bias = bias
 
         self.weight = Parameter(
@@ -301,8 +303,13 @@ class Conv(Module):
     
     def forward(self, x: Tensor) -> Tensor:
         # NCHW ==> NHWC ==> NH'W'O ==> NOH'W'
+        if self.flip_kernel:
+            weight = ops.flip(self.weight, (0, 1))
+        else:
+            weight = self.weight
+
         _x = x.permute((0, 2, 3, 1))
-        outp = ops.conv(_x, self.weight, self.stride, self.padding)
+        outp = ops.conv(_x, weight, self.stride, self.padding)
 
         if self.has_bias:
             outp += self.bias.reshape((1, 1, 1, self.out_channels)).broadcast_to(outp.shape)
@@ -316,9 +323,9 @@ class ConvTranspose(Module):
                  bias: bool = True, device=None, dtype: str = "float32"):
         super().__init__()
 
-        conv_padding = output_padding + (kernel_size - 1) - padding
+        conv_padding = output_padding + kernel_size - 1 - padding
         self.conv = Conv(in_channels, out_channels, kernel_size, 1,
-                         conv_padding, bias, device, dtype)
+                         conv_padding, bias, device, dtype, True)
         self.stride = stride
 
     def forward(self, x: Tensor) -> Tensor:
