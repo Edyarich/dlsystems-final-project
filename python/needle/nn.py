@@ -1,6 +1,6 @@
 """The module.
 """
-from typing import List
+from typing import List, Optional
 from needle.autograd import Tensor
 from needle import ops
 import needle.init as init
@@ -110,7 +110,7 @@ class Linear(Module):
         logits = X @ self.weight
 
         if self.has_bias:
-            reshaped_bias = ops.broadcast_to(self.bias, 
+            reshaped_bias = ops.broadcast_to(self.bias,
                                             (batch_size, self.out_features))
             logits += reshaped_bias
 
@@ -184,7 +184,7 @@ class BatchNorm1d(Module):
             self.running_var *= (1 - self.momentum)
             self.running_var += self.momentum * var.data
 
-            return weight * normalized_x + bias 
+            return weight * normalized_x + bias
         else:
             broad_mean = self.running_mean.reshape((1, self.dim)).broadcast_to(x.shape)
             broad_var = self.running_var.reshape((1, self.dim)).broadcast_to(x.shape)
@@ -262,7 +262,9 @@ class Conv(Module):
     No grouped convolution or dilation
     Only supports square kernels
     """
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, bias=True, device=None, dtype="float32"):
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: int,
+                 stride: int = 1, padding: Optional[int] = None,
+                 bias: int = True, device=None, dtype: str = "float32"):
         super().__init__()
         if isinstance(kernel_size, tuple):
             kernel_size = kernel_size[0]
@@ -272,7 +274,7 @@ class Conv(Module):
         self.out_channels = out_channels
         self.kernel_size = kernel_size
         self.stride = stride
-        self.padding = (kernel_size - 1) // 2
+        self.padding = (kernel_size - 1) // 2 if padding is None else padding
 
         self.has_bias = bias
 
@@ -306,6 +308,45 @@ class Conv(Module):
             outp += self.bias.reshape((1, 1, 1, self.out_channels)).broadcast_to(outp.shape)
         
         return outp.permute((0, 3, 1, 2))
+
+
+class ConvTranspose(Module):
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: int,
+                 stride: int = 1, padding: int = 0, output_padding: int = 0,
+                 bias: bool = True, device=None, dtype: str = "float32"):
+        super().__init__()
+
+        conv_padding = output_padding + (kernel_size - 1) - padding
+        self.conv = Conv(in_channels, out_channels, kernel_size, 1,
+                         conv_padding, bias, device, dtype)
+        self.stride = stride
+
+    def forward(self, x: Tensor) -> Tensor:
+        dilated_x = ops.dilate(
+            x, axes=(2, 3), dilation=self.stride-1, cut_last=True
+        )
+        return self.conv(dilated_x)
+
+
+class MaxPool(Module):
+    """
+    Multi-channel 2D MaxPool layer
+    IMPORTANT: Accepts inputs in NCHW format, outputs also in NCHW format
+    Only supports padding=0, stride=kernel_size
+    No grouped convolution or dilation
+    Only supports square kernels
+    Image sizes should be divisible by kernel_size
+    """
+    def __init__(self, kernel_size):
+        super().__init__()
+
+        self.kernel_size = kernel_size
+
+    def forward(self, x: Tensor) -> Tensor:
+        # NCHW ==> NHWC ==> NH'W'O ==> NOH'W'
+        _x = x.permute((0, 2, 3, 1))
+        output = ops.maxpool(_x, self.kernel_size)
+        return output.permute((0, 3, 1, 2))
 
 
 class Sigmoid(Module):
@@ -462,7 +503,7 @@ class RNN(Module):
         """
         seq_len, bs, input_size = X.shape
         if h0 is None:
-            h0 = init.zeros(self.n_layers, bs, self.hidden_size, device=X.device, 
+            h0 = init.zeros(self.n_layers, bs, self.hidden_size, device=X.device,
                 requires_grad=True)
             
         h0_arr = [x for x in ops.split(h0, 0)]

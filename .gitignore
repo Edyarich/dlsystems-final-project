@@ -1,4 +1,5 @@
 .idea/
+.ipynb_checkpoints/
 build/
 data/cifar-10-batches-py
 data/landscapes/
