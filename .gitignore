@@ -1,9 +1,11 @@
 .idea/
+.ipynb_checkpoints/
+.mypy_cache/
+.pytest_cache/
 build/
 data/cifar-10-batches-py
 data/landscapes/
 data/cifar-10-python.tar.gz
-.mypy_cache/
 *.pyc
 *.so
 Makefile

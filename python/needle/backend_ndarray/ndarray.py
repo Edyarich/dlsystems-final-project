@@ -691,10 +691,10 @@ class NDArray:
             new_offset += (self.shape[ax] - 1) * prod(self.shape[ax+1:])
 
         flipped = NDArray.make(
-            self.shape, 
-            tuple(new_strides), 
-            self._device, 
-            self._handle, 
+            self.shape,
+            tuple(new_strides),
+            self._device,
+            self._handle,
             new_offset
         )
         flipped = flipped.compact()
