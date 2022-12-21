@@ -136,10 +136,10 @@ class PowerScalar(TensorOp):
         self.scalar = scalar
 
     def compute(self, a: NDArray) -> NDArray:
-        return a**self.scalar
+        return a ** self.scalar
 
     def gradient(self, out_grad, node):
-        return self.scalar * out_grad * node.inputs[0]**(self.scalar - 1)
+        return self.scalar * out_grad * node.inputs[0] ** (self.scalar - 1)
 
 
 def power_scalar(a, scalar):
@@ -163,7 +163,7 @@ class EWiseDiv(TensorOp):
     def gradient(self, out_grad, node):
         divisible, divisor = node.inputs
         return out_grad / divisor, \
-                out_grad * (-divisible) / divisor**2
+               out_grad * (-divisible) / divisor ** 2
 
 
 def divide(a, b):
@@ -189,7 +189,7 @@ class Transpose(TensorOp):
     def __init__(self, axes: Optional[tuple] = None):
         if not (axes is None or len(axes) == 2):
             raise ValueError('Wrong new axes')
-        
+
         self.axes = (-2, -1) if axes is None else axes
 
     def compute(self, a):
@@ -208,7 +208,7 @@ class Permute(TensorOp):
         if not (axes is None or set(axes) == set(range(len(axes)))):
             raise ValueError('Wrong new axes')
 
-        self.axes = list(range(axes))[::-1] if axes is None else axes
+        self.axes = axes
 
     def compute(self, a):
         if isinstance(a, np.ndarray):
@@ -227,7 +227,7 @@ class Permute(TensorOp):
 
 
 def permute(a, axes=None):
-    return Permute(axes)(a)        
+    return Permute(axes)(a)
 
 
 class Reshape(TensorOp):
@@ -249,27 +249,27 @@ def reshape(a, shape):
 class BroadcastTo(TensorOp):
     def __init__(self, shape):
         self.shape = shape
-        
+
     @staticmethod
     def find_first_occ(arr: tuple, subarr: tuple) -> List[bool]:
         mask = [False] * len(arr)
         mask_start = 0
 
         for start in range(len(arr) - len(subarr) + 1):
-            for i in range(start, start+len(subarr)):
-                if arr[i] == subarr[i-start] or subarr[i] == 1:
+            for i in range(start, start + len(subarr)):
+                if arr[i] == subarr[i - start] or subarr[i] == 1:
                     continue
                 else:
                     break
             else:
                 mask_start = start
                 break
-                
+
         if mask_start is not None:
-            for i in range(mask_start, mask_start+len(subarr)):
-                if subarr[i-mask_start] != 1:
+            for i in range(mask_start, mask_start + len(subarr)):
+                if subarr[i - mask_start] != 1:
                     mask[i] = True
-        
+
         return mask
 
     def compute(self, a):
@@ -277,13 +277,13 @@ class BroadcastTo(TensorOp):
 
     def gradient(self, out_grad, node):
         inp_shape = node.inputs[0].shape
-        
+
         if inp_shape == out_grad.shape:
             return out_grad
         elif node.inputs[0].size == 1:
             return out_grad.sum().reshape(inp_shape)
-        
-        shape_mask = BroadcastTo.find_first_occ(out_grad.shape, 
+
+        shape_mask = BroadcastTo.find_first_occ(out_grad.shape,
                                                 inp_shape)
         rev_shape_mask = [not bool_val for bool_val in shape_mask]
 
@@ -298,7 +298,8 @@ def broadcast_to(a, shape):
 
 
 class Summation(TensorOp):
-    def __init__(self, axes: Optional[Union[tuple, int]] = None, keepdims: bool = False):
+    def __init__(self, axes: Optional[Union[tuple, int]] = None,
+                 keepdims: bool = False):
         if isinstance(axes, int):
             axes = axes,
 
@@ -326,7 +327,8 @@ def summation(a, axes=None, keepdims=False):
 
 
 class Mean(TensorOp):
-    def __init__(self, axes: Optional[Union[tuple, int]] = None, keepdims: bool = False):
+    def __init__(self, axes: Optional[Union[tuple, int]] = None,
+                 keepdims: bool = False):
         if isinstance(axes, int):
             axes = axes,
 
@@ -423,7 +425,7 @@ class ReLU(TensorOp):
 
     def gradient(self, out_grad, node):
         node.inputs[0].realize_cached_data()
-        layer_mask = Tensor(node.inputs[0].cached_data > 0, 
+        layer_mask = Tensor(node.inputs[0].cached_data > 0,
                             device=out_grad.device)
         return out_grad * layer_mask
 
@@ -436,7 +438,7 @@ class LogSumExp(TensorOp):
     def __init__(self, axes: Optional[Union[tuple, int]] = None):
         if isinstance(axes, int):
             axes = axes,
-        
+
         self.axes = axes
 
     def broadcasted_max(self, inp):
@@ -461,12 +463,11 @@ class LogSumExp(TensorOp):
         broadcasted_max_z = self.broadcasted_max(Z)
 
         return array_api.log(
-                    array_api.sum(
-                        array_api.exp(Z - broadcasted_max_z), 
-                        self.axes
-                    )
-                ) + max_z
-
+            array_api.sum(
+                array_api.exp(Z - broadcasted_max_z),
+                self.axes
+            )
+        ) + max_z
 
     def gradient(self, out_grad, node):
         inp = node.inputs[0]
@@ -482,7 +483,7 @@ class LogSumExp(TensorOp):
         sum_exp = sum_exp.broadcast_to(inp_shape)
         softmax = exp_inp / sum_exp
 
-        broadcasted_out_grad = broadcast_to(out_grad.reshape(unsq_outp_shape), 
+        broadcasted_out_grad = broadcast_to(out_grad.reshape(unsq_outp_shape),
                                             inp_shape)
         return softmax * broadcasted_out_grad
 
@@ -492,10 +493,11 @@ def logsumexp(a, axes=None):
 
 
 class Variation(TensorOp):
-    def __init__(self, axes: Optional[Union[tuple, int]] = None, keepdims: bool = False):
+    def __init__(self, axes: Optional[Union[tuple, int]] = None,
+                 keepdims: bool = False):
         if isinstance(axes, int):
             axes = axes,
-        
+
         self.axes = axes
         self.keepdims = keepdims
 
@@ -516,10 +518,11 @@ class Variation(TensorOp):
         inp_mean = inp_mean.broadcast_to(inp_shape)
 
         reduced_size = inp.size if self.axes is None \
-                        else numpy.product([inp.shape[ax] for ax in self.axes])
+            else numpy.product([inp.shape[ax] for ax in self.axes])
         grad_coeff = 2. / reduced_size
 
-        broadcasted_grad = Summation(self.axes, self.keepdims).gradient(out_grad, node)
+        broadcasted_grad = Summation(self.axes, self.keepdims).gradient(
+            out_grad, node)
 
         return grad_coeff * broadcasted_grad * (inp - inp_mean)
 
@@ -538,7 +541,7 @@ class Tanh(TensorOp):
     def gradient(self, out_grad, node):
         # tanh'(x) = 1 - tanh^2(x)
         inp = node.inputs[0]
-        return out_grad * (1 - self.compute(inp)**2)
+        return out_grad * (1 - self.compute(inp) ** 2)
 
 
 def tanh(a):
@@ -584,7 +587,7 @@ class Stack(TensorOp):
     def compute(self, args):
         elem_shape = args[0].shape
         elem_device = args[0].device
-        
+
         result_shape = list(elem_shape)
         result_shape.insert(self.axis, len(args))
         result_shape = tuple(result_shape)
@@ -639,7 +642,7 @@ class Flip(TensorOp):
     def __init__(self, axes: Optional[tuple] = None):
         if not (axes is None or isinstance(axes, tuple)):
             raise ValueError(f'Expected type(axes) = tuple, got {type(axes)}')
-        
+
         self.axes = axes
 
     def compute(self, a):
@@ -655,12 +658,13 @@ def flip(a, axes):
 
 
 class Dilate(TensorOp):
-    def __init__(self, axes: tuple, dilation: int):
+    def __init__(self, axes: tuple, dilation: int, cut_last: bool = False):
         self.axes = axes
         self.dilation = dilation
+        self.cut_last = cut_last
 
     def compute(self, a):
-        if max(self.axes) >= a.ndim:
+        if max(self.axes) >= a.ndim or self.dilation == 0:
             return a
 
         slices_arr = [slice(sh) for sh in a.shape]
@@ -668,6 +672,7 @@ class Dilate(TensorOp):
 
         for ax in self.axes:
             result_shape[ax] *= (self.dilation + 1)
+            result_shape[ax] -= self.cut_last * self.dilation
             slices_arr[ax] = slice(0, result_shape[ax], self.dilation + 1)
 
         result = array_api.zeros(result_shape, device=a.device)
@@ -676,75 +681,78 @@ class Dilate(TensorOp):
         return result
 
     def gradient(self, out_grad, node):
-        result = undilate(out_grad, self.axes, self.dilation)
+        result = undilate(out_grad, self.axes, self.dilation, self.cut_last)
         return result
 
 
-def dilate(a, axes, dilation):
-    return Dilate(axes, dilation)(a)
+def dilate(a, axes, dilation, cut_last=False):
+    return Dilate(axes, dilation, cut_last)(a)
+
 
 class UnDilate(TensorOp):
-    def __init__(self, axes: tuple, dilation: int):
+    def __init__(self, axes: tuple, dilation: int, cut_last: bool):
         self.axes = axes
         self.dilation = dilation
+        self.cut_last = cut_last
 
     def compute(self, a):
-        if max(self.axes) >= a.ndim:
+        if max(self.axes) >= a.ndim or self.dilation == 0:
             return a
 
         slices_arr = [slice(sh) for sh in a.shape]
-        
+
         for ax in self.axes:
             slices_arr[ax] = slice(0, a.shape[ax], self.dilation + 1)
 
         return a[tuple(slices_arr)]
 
     def gradient(self, out_grad, node):
-        result = dilate(out_grad, self.axes, self.dilation)
+        result = dilate(out_grad, self.axes, self.dilation, self.cut_last)
         return result
 
 
-def undilate(a, axes, dilation):
-    return UnDilate(axes, dilation)(a)
+def undilate(a, axes, dilation, cut_last=False):
+    return UnDilate(axes, dilation, cut_last)(a)
 
 
 class Conv(TensorOp):
-    def __init__(self, stride: Optional[int] = 1, padding: Optional[int] = 0, 
-                    dilation: Optional[int] = 1):
+    def __init__(self, stride: int = 1, padding: int = 0, dilation: int = 1):
         self.stride = stride
         self.padding = padding
         self.dilation = dilation
 
     def compute(self, A, B):
-        padding_arr = ((0,)*2, (self.padding,)*2, (self.padding,)*2, (0,)*2)
+        padding_arr = (
+            (0,) * 2, (self.padding,) * 2, (self.padding,) * 2, (0,) * 2
+        )
         A_padded = array_api.pad(A, padding_arr)
 
         batch_size, height, width, in_ch = A_padded.shape
         kernel, _, _, out_ch = B.shape
         batch_s, height_s, width_s, in_ch_s = A_padded.strides
 
-        inner_dim = kernel**2 * in_ch
+        inner_dim = kernel ** 2 * in_ch
         modified_kernel = kernel + (kernel - 1) * (self.dilation - 1)
         new_shape = (
-            batch_size, 
-            len(range(0, height-modified_kernel+1, self.stride)), 
-            len(range(0, width-modified_kernel+1, self.stride)), 
-            kernel, 
-            kernel, 
+            batch_size,
+            len(range(0, height - modified_kernel + 1, self.stride)),
+            len(range(0, width - modified_kernel + 1, self.stride)),
+            kernel,
+            kernel,
             in_ch
         )
         new_strides = (
-            batch_s, 
-            height_s * self.stride, 
-            width_s * self.stride, 
-            height_s * self.dilation, 
-            width_s * self.dilation, 
+            batch_s,
+            height_s * self.stride,
+            width_s * self.stride,
+            height_s * self.dilation,
+            width_s * self.dilation,
             in_ch_s
         )
 
         if isinstance(A, np.ndarray):
             A_modified = np.lib.stride_tricks.as_strided(
-                A_padded, 
+                A_padded,
                 shape=new_shape,
                 strides=new_strides
             ).reshape(-1, inner_dim)
@@ -761,11 +769,11 @@ class Conv(TensorOp):
 
         B_modified = B.reshape((inner_dim, out_ch))
         result = A_modified @ B_modified
-        
+
         return result.reshape((
-            batch_size, 
-            new_shape[1], 
-            new_shape[2], 
+            batch_size,
+            new_shape[1],
+            new_shape[2],
             out_ch
         ))
 
@@ -779,7 +787,7 @@ class Conv(TensorOp):
         # \approx out_grad = out_grad + Dilate(axes=(1, 2), self.stride-1)
         # \approx W = W + Flip(axes=(0, 1)) + Transpose(axes=(2, 3))
         conv_padding = kernel - 1 - self.padding
-        modified_out_grad = dilate(out_grad, (1, 2), self.stride-1)
+        modified_out_grad = dilate(out_grad, (1, 2), self.stride - 1)
         modified_w = transpose(flip(w, (0, 1)), (2, 3))
 
         if isinstance(w.realize_cached_data(), NDArray):
@@ -794,19 +802,20 @@ class Conv(TensorOp):
 
         x_grad = conv(modified_out_grad, modified_w, 1, max(conv_padding, 0))
         if conv_padding < 0:
-            x_grad = x_grad[:, -conv_padding:conv_padding, -conv_padding:conv_padding, :]
+            x_grad = x_grad[:, -conv_padding:conv_padding,
+                     -conv_padding:conv_padding, :]
 
         # Calculate gradient for W
         # W,grad = X.T @ out_grad \approx Conv(\approx X, \approx out_grad)
         # Conv.stride = 1
         # Conv.padding = self.padding
         # \approx X = X + Transpose(axes=(0, 3)) (BHWC ==> CHWB)
-        # \approx out_grad = out_grad + Permute(1, 2, 0, 3) (BH'W'O ==> H'W'BO) + 
+        # \approx out_grad = out_grad + Permute(1, 2, 0, 3) (BH'W'O ==> H'W'BO)
         #                    + Dilate(axes=(0, 1), self.stride-1)
         # w_grad = w_grad + Permute(1, 2, 0, 3) (CKKO ==> KKCO)
         permuted_x = transpose(x, (0, 3))
         permuted_out_grad = permute(out_grad, (1, 2, 0, 3))
-        permuted_out_grad = dilate(permuted_out_grad, (0, 1), self.stride-1)
+        permuted_out_grad = dilate(permuted_out_grad, (0, 1), self.stride - 1)
 
         if isinstance(w.realize_cached_data(), NDArray):
             permuted_x = Tensor(
@@ -820,11 +829,11 @@ class Conv(TensorOp):
 
         w_grad = conv(permuted_x, permuted_out_grad, 1, self.padding)
         w_grad = permute(w_grad, (1, 2, 0, 3))
-        
+
         return x_grad, w_grad
 
 
-def conv(a, b, stride=1, padding=1, dilation=1):
+def conv(a, b, stride=1, padding=0, dilation=1):
     return Conv(stride, padding, dilation)(a, b)
 
 # class Noise(TensorOp):
@@ -962,13 +971,118 @@ class MaxPool(TensorOp):
 def maxpool(a, kernel):
     return MaxPool(kernel, kernel, padding=0, dilation=1)(a)
 
+class MaxPool(TensorOp):
+    def __init__(self, kernel: int, stride: int, padding: int = 0,
+                 dilation: int = 1):
+        self.kernel = kernel
+        self.stride = stride
+        self.padding = padding
+        self.dilation = dilation
+        self.argmax_indices = None
+
+    def _onehot_argmax_indices(self):
+        mask = np.zeros((self.argmax_indices.size, self.kernel**2))
+        mask[np.arange(mask.shape[0]), self.argmax_indices] = 1
+        return mask
+
+    def compute(self, a):
+        padding_arr = (
+            (0,) * 2,
+            (self.padding,) * 2,
+            (self.padding,) * 2,
+            (0,) * 2
+        )
+        a_padded = array_api.pad(a, padding_arr)
+
+        batch_size, height, width, in_ch = a_padded.shape
+        batch_s, height_s, width_s, in_ch_s = a_padded.strides
+
+        modified_kernel = self.kernel + (self.kernel - 1) * (self.dilation - 1)
+        new_shape = (
+            batch_size,
+            len(range(0, height - modified_kernel + 1, self.stride)),
+            len(range(0, width - modified_kernel + 1, self.stride)),
+            self.kernel,
+            self.kernel,
+            in_ch
+        )
+        new_strides = (
+            batch_s,
+            height_s * self.stride,
+            width_s * self.stride,
+            height_s * self.dilation,
+            width_s * self.dilation,
+            in_ch_s
+        )
+        brand_new_shape = new_shape[:3] + (self.kernel**2, in_ch)
+
+        if isinstance(a, np.ndarray):
+            a_modified = np.lib.stride_tricks.as_strided(
+                a_padded,
+                shape=new_shape,
+                strides=new_strides
+            ).reshape(brand_new_shape)
+            self.argmax_indices = a_modified.argmax(axis=3).reshape(-1)
+        elif isinstance(a, NDArray):
+            a_modified = NDArray.make(
+                new_shape,
+                new_strides,
+                a.device,
+                a_padded._handle,
+                a_padded._offset
+            ).compact().reshape(brand_new_shape)
+            self.argmax_indices = a_modified.numpy().argmax(axis=3).reshape(-1)
+        else:
+            raise ValueError(f"Expected np.ndarray or NDArray, got {type(a)}")
+
+        result = a_modified.max(axis=3)
+
+        return result.reshape((
+            batch_size,
+            new_shape[1],
+            new_shape[2],
+            in_ch
+        ))
+
+    def gradient(self, out_grad, node):
+        # grad_shape = (batch, small_height, small_width, in_channels)
+        grad_shape = out_grad.shape
+        unsqueezed_shape = grad_shape[:3] + (1, grad_shape[3])
+        broadcast_shape = grad_shape[:3] + (self.kernel**2, grad_shape[3])
+
+        modified_out_grad = out_grad\
+            .reshape(unsqueezed_shape).broadcast_to(broadcast_shape)
+
+        one_hot_mask = self._onehot_argmax_indices().reshape(
+            grad_shape + (self.kernel**2,),
+        )
+        one_hot_mask = np.swapaxes(one_hot_mask, 3, 4)
+        result = modified_out_grad * Tensor(one_hot_mask, device=out_grad.device)
+        result = result.reshape(
+            grad_shape[:3] + (self.kernel, self.kernel, grad_shape[-1])
+        ).permute(
+            (0, 1, 3, 2, 4, 5)
+        ).reshape((
+            grad_shape[0],
+            grad_shape[1]*self.kernel,
+            grad_shape[2]*self.kernel,
+            grad_shape[3]
+        ))
+
+        return result
+
+
+def maxpool(a, kernel):
+    return MaxPool(kernel, kernel, padding=0, dilation=1)(a)
+
+
 # Helper functions
 def get_unsq_outp_shape(inp_shape: List[int], axes: Optional[tuple] = None):
     if isinstance(inp_shape, tuple):
         inp_shape = list(inp_shape)
-        
+
     outp_shape = inp_shape.copy()
-    
+
     if axes is None:
         outp_shape[:] = [1] * len(inp_shape)
     else:
