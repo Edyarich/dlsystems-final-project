@@ -73,7 +73,7 @@ class Lambda(Transform):
 
 
 class Resize(Transform):
-    def __init__(self, sizes: Tuple[int]):
+    def __init__(self, sizes: Tuple[int, int]):
         self.height, self.width = sizes
 
     def __call__(self, img, **cv2_resize_kwargs):
@@ -154,12 +154,14 @@ class DataLoader:
             self,
             dataset: Dataset,
             batch_size: Optional[int] = 1,
+            device: Optional[BackendDevice] = None,
             shuffle: bool = False,
     ):
 
         self.dataset = dataset
         self.shuffle = shuffle
         self.batch_size = batch_size
+        self.device = device
 
         if not self.shuffle:
             indices = np.arange(len(dataset))
@@ -175,11 +177,20 @@ class DataLoader:
                                     self.batch_size))
 
     def __iter__(self):
+        dataset_elem = self.dataset[0]
+
+        if isinstance(dataset_elem, tuple):
+            k_outputs = len(dataset_elem)
+        else:
+            k_outputs = 1
+
         for ind_batch in self.ordering:
             batch = [self.dataset[ind] for ind in ind_batch]
-            k_outputs = len(self.dataset[0])
 
-            yield [Tensor([val[k] for val in batch]) for k in range(k_outputs)]
+            if k_outputs > 1:
+                yield [Tensor([val[k] for val in batch], device=self.device) for k in range(k_outputs)]
+            else:
+                yield Tensor(batch, device=self.device)
 
         if self.shuffle:
             indices = np.random.permutation(len(self.dataset))
