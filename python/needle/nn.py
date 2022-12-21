@@ -1,5 +1,3 @@
-"""The module.
-"""
 from typing import List, Optional
 from needle.autograd import Tensor
 from needle import ops, array_api
@@ -81,7 +79,8 @@ class Identity(Module):
 
 
 class Linear(Module):
-    def __init__(self, in_features, out_features, bias=True, device=None, dtype="float32"):
+    def __init__(self, in_features, out_features, bias=True, device=None,
+                 dtype="float32"):
         super().__init__()
         self.in_features = in_features
         self.out_features = out_features
@@ -112,7 +111,7 @@ class Linear(Module):
 
         if self.has_bias:
             reshaped_bias = ops.broadcast_to(self.bias,
-                                            (batch_size, self.out_features))
+                                             (batch_size, self.out_features))
             logits += reshaped_bias
 
         return logits
@@ -149,10 +148,13 @@ class SoftmaxLoss(Module):
         num_classes = logits.shape[-1]
 
         log_sum_exp = ops.logsumexp(logits, -1)
-        onehot_y = init.one_hot(num_classes, y, device=logits.device, dtype=logits.dtype)
+        onehot_y = init.one_hot(
+            num_classes, y, device=logits.device, dtype=logits.dtype
+        )
         y_logits = ops.summation(logits * onehot_y, -1)
 
         return ops.mean(log_sum_exp - y_logits)
+
 
 class L1Loss(Module):
     def __init__(self):
@@ -160,16 +162,19 @@ class L1Loss(Module):
 
     def forward(self, pred: Tensor, target: Tensor):
         return ops.abs(pred, target).mean()
-    
+
+
 class L2Loss(Module):
     def __init__(self):
         super().__init__()
-        
+
     def forward(self, pred: Tensor, target: Tensor):
         return ((target - pred) ** 2).mean()
 
+
 class BatchNorm1d(Module):
-    def __init__(self, dim, eps=1e-5, momentum=0.1, device=None, dtype="float32"):
+    def __init__(self, dim, eps=1e-5, momentum=0.1, device=None,
+                 dtype="float32"):
         super().__init__()
         self.dim = dim
         self.eps = eps
@@ -200,8 +205,10 @@ class BatchNorm1d(Module):
 
             return weight * normalized_x + bias
         else:
-            broad_mean = self.running_mean.reshape((1, self.dim)).broadcast_to(x.shape)
-            broad_var = self.running_var.reshape((1, self.dim)).broadcast_to(x.shape)
+            broad_mean = self.running_mean.reshape((1, self.dim)).broadcast_to(
+                x.shape)
+            broad_var = self.running_var.reshape((1, self.dim)).broadcast_to(
+                x.shape)
             normalized_x = (x - broad_mean) / ops.sqrt(broad_var + self.eps)
 
             return self.weight.data * normalized_x + self.bias.data
@@ -242,13 +249,13 @@ class LayerNorm1d(Module):
 
 
 class Dropout(Module):
-    def __init__(self, p = 0.5):
+    def __init__(self, p=0.5):
         super().__init__()
         self.p = p
 
     def forward(self, x: Tensor) -> Tensor:
         if self.training:
-            mask = init.randb(*x.shape, p=1-self.p, device=x.device)
+            mask = init.randb(*x.shape, p=1 - self.p, device=x.device)
             return mask * x / (1 - self.p)
         else:
             return x
@@ -276,6 +283,7 @@ class Conv(Module):
     No grouped convolution or dilation
     Only supports square kernels
     """
+
     def __init__(self, in_channels: int, out_channels: int, kernel_size: int,
                  stride: int = 1, padding: Optional[int] = None,
                  bias: int = True, device=None, dtype: str = "float32",
@@ -296,8 +304,8 @@ class Conv(Module):
 
         self.weight = Parameter(
             init.kaiming_uniform(
-                in_channels*kernel_size**2,
-                out_channels*kernel_size**2,
+                in_channels * kernel_size ** 2,
+                out_channels * kernel_size ** 2,
                 shape=(kernel_size, kernel_size, in_channels, out_channels),
                 device=device,
                 dtype=dtype
@@ -306,15 +314,15 @@ class Conv(Module):
         if bias:
             self.bias = Parameter(
                 init.kaiming_uniform(
-                    in_channels*kernel_size**2,
+                    in_channels * kernel_size ** 2,
                     1,
                     shape=(out_channels,),
-                    gain=3**-0.5,
+                    gain=3 ** -0.5,
                     device=device,
                     dtype=dtype
                 )
             )
-    
+
     def forward(self, x: Tensor) -> Tensor:
         # NCHW ==> NHWC ==> NH'W'O ==> NOH'W'
         if self.flip_kernel:
@@ -326,8 +334,10 @@ class Conv(Module):
         outp = ops.conv(_x, weight, self.stride, self.padding)
 
         if self.has_bias:
-            outp += self.bias.reshape((1, 1, 1, self.out_channels)).broadcast_to(outp.shape)
-        
+            outp += self.bias \
+                .reshape((1, 1, 1, self.out_channels)) \
+                .broadcast_to(outp.shape)
+
         return outp.permute((0, 3, 1, 2))
 
 
@@ -344,7 +354,7 @@ class ConvTranspose(Module):
 
     def forward(self, x: Tensor) -> Tensor:
         dilated_x = ops.dilate(
-            x, axes=(2, 3), dilation=self.stride-1, cut_last=True
+            x, axes=(2, 3), dilation=self.stride - 1, cut_last=True
         )
         return self.conv(dilated_x)
 
@@ -358,6 +368,7 @@ class MaxPool(Module):
     Only supports square kernels
     Image sizes should be divisible by kernel_size
     """
+
     def __init__(self, kernel_size):
         super().__init__()
 
@@ -375,28 +386,12 @@ class Sigmoid(Module):
         return 1 / (1 + ops.exp(-x))
 
 
-class Trash(Module):
-    """
-    Multi-channel 2D MaxPool layer
-    IMPORTANT: Accepts inputs in NCHW format, outputs also in NCHW format
-    Only supports padding=0, stride=kernel_size
-    No grouped convolution or dilation
-    Only supports square kernels
-    Image sizes should be divisible by kernel_size
-    """
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x: Tensor, *args) -> Tensor:
-        return x
-
-
 class Block(Module):
     def __init__(self, in_ch, out_ch, time_emb_dim, up=False):
         super().__init__()
-        self.time_mlp =  Linear(time_emb_dim, out_ch)
+        self.time_mlp = Linear(time_emb_dim, out_ch)
         if up:
-            self.conv1 = Conv(2*in_ch, out_ch, 3, padding=1)
+            self.conv1 = Conv(2 * in_ch, out_ch, 3, padding=1)
             self.transform = ConvTranspose(out_ch, out_ch, 4, 2, 1)
         else:
             self.conv1 = Conv(in_ch, out_ch, 3, padding=1)
@@ -405,7 +400,7 @@ class Block(Module):
         self.bnorm1 = BatchNorm2d(out_ch)
         self.bnorm2 = BatchNorm2d(out_ch)
         self.relu = ReLU()
- 
+
     def forward(self, x, t):
         # First Conv
         h = self.bnorm1(self.relu(self.conv1(x)))
@@ -425,49 +420,49 @@ class Unet(Module):
     """
     A simplified variant of the Unet architecture.
     """
+
     def __init__(self):
         super().__init__()
         image_channels = 3
-        down_channels = (64, 128, 256, 512, 1024)
-        up_channels = (1024, 512, 256, 128, 64)
+        down_channels = (32, 64, 128, 256, 512)
+        up_channels = (512, 256, 128, 64, 32)
         out_dim = 1
         time_emb_dim = 16
- 
+
         # Time embedding
         self.time_mlp = Sequential(
             SinusoidalPosEmb(time_emb_dim),
             Linear(time_emb_dim, time_emb_dim),
             ReLU()
         )
- 
+
         # Initial projection
         self.conv0 = Conv(image_channels, down_channels[0], 3)
- 
+
         # Downsample
         self.downs = []
         # Upsample
         self.ups = []
-        
+
         for i in range(len(down_channels) - 1):
             self.downs.append(
-                Block(down_channels[i], down_channels[i+1], time_emb_dim)
+                Block(down_channels[i], down_channels[i + 1], time_emb_dim)
             )
             setattr(self, f'down_block_{i}', self.downs[-1])
-            
+
         for i in range(len(up_channels) - 1):
             self.ups.append(
-                Block(up_channels[i], up_channels[i+1], time_emb_dim, up=True)
+                Block(up_channels[i], up_channels[i + 1], time_emb_dim, up=True)
             )
             setattr(self, f'up_block_{i}', self.ups[-1])
- 
+
         self.output = Conv(up_channels[-1], 3, out_dim)
- 
-    def forward(self, x, timestep):
-        # Embedd time
+
+    def forward(self, x: Tensor, timestep: Tensor) -> Tensor:
+        # x.shape = (B, C, H, W)
+        # timestep.shape = (B,)
         t = self.time_mlp(timestep)
-        # Initial conv
         x = self.conv0(x)
-        # Unet
         residual_inputs = []
         for down in self.downs:
             x = down(x, t)
@@ -477,12 +472,13 @@ class Unet(Module):
             # Add residual x as additional channels
             x = ops.stack((x, residual_x), dim=1)
             x = up(x, t)
-        
+
         return self.output(x)
 
 
 class RNNCell(Module):
-    def __init__(self, input_size, hidden_size, bias=True, nonlinearity='tanh', device=None, dtype="float32"):
+    def __init__(self, input_size, hidden_size, bias=True, nonlinearity='tanh',
+                 device=None, dtype="float32"):
         """
         Applies an RNN cell with tanh or ReLU nonlinearity.
 
@@ -501,8 +497,8 @@ class RNNCell(Module):
         Weights and biases are initialized from U(-sqrt(k), sqrt(k)) where k = 1/hidden_size
         """
         super().__init__()
-        
-        bound = 1 / hidden_size**0.5
+
+        bound = 1 / hidden_size ** 0.5
         self.has_bias = bias
 
         self.W_ih = Parameter(
@@ -515,7 +511,7 @@ class RNNCell(Module):
                 dtype=dtype,
             )
         )
-        
+
         self.W_hh = Parameter(
             init.rand(
                 hidden_size,
@@ -526,7 +522,7 @@ class RNNCell(Module):
                 dtype=dtype,
             )
         )
-        
+
         if bias:
             self.bias_ih = Parameter(
                 init.rand(
@@ -549,7 +545,7 @@ class RNNCell(Module):
                     dtype=dtype
                 )
             )
-        
+
         if nonlinearity == 'tanh':
             self.activation = Tanh()
         elif nonlinearity == 'relu':
@@ -582,7 +578,8 @@ class RNNCell(Module):
 
 
 class RNN(Module):
-    def __init__(self, input_size, hidden_size, num_layers=1, bias=True, nonlinearity='tanh', device=None, dtype="float32"):
+    def __init__(self, input_size, hidden_size, num_layers=1, bias=True,
+                 nonlinearity='tanh', device=None, dtype="float32"):
         """
         Applies a multi-layer RNN with tanh or ReLU non-linearity to an input sequence.
 
@@ -609,13 +606,15 @@ class RNN(Module):
         self.n_layers = num_layers
         self.input_size = input_size
         self.hidden_size = hidden_size
-        self.rnn_cells = [RNNCell(input_size, hidden_size, bias, nonlinearity, device, dtype)]
+        self.rnn_cells = [
+            RNNCell(input_size, hidden_size, bias, nonlinearity, device, dtype)]
 
-        for _ in range(num_layers-1):
+        for _ in range(num_layers - 1):
             self.rnn_cells.append(
-                RNNCell(hidden_size, hidden_size, bias, nonlinearity, device, dtype)
+                RNNCell(hidden_size, hidden_size, bias, nonlinearity, device,
+                        dtype)
             )
-        
+
     def forward(self, X, h0=None):
         """
         Inputs:
@@ -630,9 +629,10 @@ class RNN(Module):
         """
         seq_len, bs, input_size = X.shape
         if h0 is None:
-            h0 = init.zeros(self.n_layers, bs, self.hidden_size, device=X.device,
-                requires_grad=True)
-            
+            h0 = init.zeros(self.n_layers, bs, self.hidden_size,
+                            device=X.device,
+                            requires_grad=True)
+
         h0_arr = [x for x in ops.split(h0, 0)]
 
         X = ops.split(X, 0)
@@ -640,7 +640,7 @@ class RNN(Module):
 
         for i in range(seq_len):
             for j in range(self.n_layers):
-                inp = X[i] if j == 0 else h0_arr[j-1]
+                inp = X[i] if j == 0 else h0_arr[j - 1]
                 h0_arr[j] = self.rnn_cells[j](inp, h0_arr[j])
 
                 if j + 1 == self.n_layers:
@@ -648,11 +648,12 @@ class RNN(Module):
 
         return ops.stack(output, 0), ops.stack(h0_arr, 0)
 
-        
+
 class LSTMCell(Module):
     K_GATES = 4
 
-    def __init__(self, input_size, hidden_size, bias=True, device=None, dtype="float32"):
+    def __init__(self, input_size, hidden_size, bias=True, device=None,
+                 dtype="float32"):
         """
         A long short-term memory (LSTM) cell.
 
@@ -670,17 +671,17 @@ class LSTMCell(Module):
         Weights and biases are initialized from U(-sqrt(k), sqrt(k)) where k = 1/hidden_size
         """
         super().__init__()
-        
+
         self.has_bias = bias
         self.input_size = input_size
         self.hidden_size = hidden_size
 
-        bound = 1 / hidden_size**0.5
+        bound = 1 / hidden_size ** 0.5
 
         self.W_ih = Parameter(
             init.rand(
                 input_size,
-                self.K_GATES*hidden_size,
+                self.K_GATES * hidden_size,
                 low=-bound,
                 high=bound,
                 device=device,
@@ -690,7 +691,7 @@ class LSTMCell(Module):
         self.W_hh = Parameter(
             init.rand(
                 hidden_size,
-                self.K_GATES*hidden_size,
+                self.K_GATES * hidden_size,
                 low=-bound,
                 high=bound,
                 device=device,
@@ -702,7 +703,7 @@ class LSTMCell(Module):
             self.bias_ih = Parameter(
                 init.rand(
                     1,
-                    self.K_GATES*hidden_size,
+                    self.K_GATES * hidden_size,
                     low=-bound,
                     high=bound,
                     device=device,
@@ -712,7 +713,7 @@ class LSTMCell(Module):
             self.bias_hh = Parameter(
                 init.rand(
                     1,
-                    self.K_GATES*hidden_size,
+                    self.K_GATES * hidden_size,
                     low=-bound,
                     high=bound,
                     device=device,
@@ -746,16 +747,19 @@ class LSTMCell(Module):
             h0, c0 = h
             logits += h0 @ self.W_hh
         else:
-            h0 = init.zeros(bs, self.hidden_size, device=X.device, dtype=X.dtype,
-                    requires_grad=True)
-            c0 = init.zeros(bs, self.hidden_size, device=X.device, dtype=X.dtype,
-                    requires_grad=True)
+            h0 = init.zeros(bs, self.hidden_size, device=X.device,
+                            dtype=X.dtype,
+                            requires_grad=True)
+            c0 = init.zeros(bs, self.hidden_size, device=X.device,
+                            dtype=X.dtype,
+                            requires_grad=True)
 
         if self.has_bias:
             total_bias = self.bias_ih + self.bias_hh
             logits += total_bias.broadcast_to(logits.shape)
 
-        gates = ops.split(logits.reshape((bs, self.K_GATES, self.hidden_size)), axis=1)
+        gates = ops.split(logits.reshape((bs, self.K_GATES, self.hidden_size)),
+                          axis=1)
         gates = [activ(gate) for activ, gate in zip(self.activations, gates)]
         inp_gate, fgt_gate, cell_inp, outp_gate = gates
 
@@ -766,7 +770,8 @@ class LSTMCell(Module):
 
 
 class LSTM(Module):
-    def __init__(self, input_size, hidden_size, num_layers=1, bias=True, device=None, dtype="float32"):
+    def __init__(self, input_size, hidden_size, num_layers=1, bias=True,
+                 device=None, dtype="float32"):
         super().__init__()
         """
         Applies a multi-layer long short-term memory (LSTM) RNN to an input sequence.
@@ -791,9 +796,10 @@ class LSTM(Module):
         self.n_layers = num_layers
         self.input_size = input_size
         self.hidden_size = hidden_size
-        self.lstm_cells = [LSTMCell(input_size, hidden_size, bias, device, dtype)]
+        self.lstm_cells = [
+            LSTMCell(input_size, hidden_size, bias, device, dtype)]
 
-        for _ in range(num_layers-1):
+        for _ in range(num_layers - 1):
             self.lstm_cells.append(
                 LSTMCell(hidden_size, hidden_size, bias, device, dtype)
             )
@@ -817,13 +823,15 @@ class LSTM(Module):
         """
         seq_len, bs, input_size = X.shape
         if h is None:
-            h0 = init.zeros(self.n_layers, bs, self.hidden_size, device=X.device,
-                requires_grad=True)
-            c0 = init.zeros(self.n_layers, bs, self.hidden_size, device=X.device,
-                requires_grad=True)
+            h0 = init.zeros(self.n_layers, bs, self.hidden_size,
+                            device=X.device,
+                            requires_grad=True)
+            c0 = init.zeros(self.n_layers, bs, self.hidden_size,
+                            device=X.device,
+                            requires_grad=True)
         else:
             h0, c0 = h
-            
+
         h0_arr = [x for x in ops.split(h0, 0)]
         c0_arr = [x for x in ops.split(c0, 0)]
 
@@ -832,39 +840,47 @@ class LSTM(Module):
 
         for i in range(seq_len):
             for j in range(self.n_layers):
-                inp = X[i] if j == 0 else h0_arr[j-1]
+                inp = X[i] if j == 0 else h0_arr[j - 1]
                 hid = (h0_arr[j], c0_arr[j])
                 h0_arr[j], c0_arr[j] = self.lstm_cells[j](inp, hid)
 
                 if j + 1 == self.n_layers:
                     output.append(h0_arr[j])
 
-        return ops.stack(output, 0), (ops.stack(h0_arr, 0), ops.stack(c0_arr, 0))
+        return ops.stack(output, 0), (
+        ops.stack(h0_arr, 0), ops.stack(c0_arr, 0))
+
 
 class SinusoidalPosEmb(Module):
-    def __init__(self, dim):
+    def __init__(self, dim: int):
         super().__init__()
         self.dim = dim
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
+        # x.shape = (batch_size,)
+        # Returns emb with shape = (batch_size, self.dim)
         import math
         device = x.device
         half_dim = self.dim // 2
         emb = math.log(10000) / (half_dim - 1)
         emb = ops.exp(Tensor(range(half_dim), device=device) * -emb)
-        emb = x.broadcast_to((x.shape[0], 1)) * emb.broadcast_to((x.shape[0], 1))
-        emb = ops.Stack((ops.sin(emb), ops.cos(emb)), dim=1)
+        emb = x.broadcast_to((x.size, 1)) @ emb.broadcast_to((1, emb.size))
+        emb = ops.stack(
+            (ops.sin(emb), ops.cos(emb)), axis=2
+        ).reshape((x.size, self.dim))
+        print(x.device)
         return emb
+
 
 class Diffusion(Module):
     def __init__(
-        self,
-        model,
-        optimizer,
-        timesteps,
-        beta_schedule="linear",
-        loss_type = "l1",
-        device=None
+            self,
+            model,
+            optimizer,
+            timesteps,
+            beta_schedule="linear",
+            loss_type="l1",
+            device=None
     ):
         if beta_schedule == 'linear':
             betas = linear_beta_schedule(timesteps, device=device)
@@ -880,16 +896,37 @@ class Diffusion(Module):
             self.loss_fn = L2Loss()
         else:
             raise NotImplementedError(f"Unknown loss {loss_type}")
-            
+
         alphas = 1.0 - betas
         alphas_cumprod = array_api.cumprod(alphas, axis=0)
-        self.alphas_cumprod_prev = Tensor(np.pad(alphas_cumprod.numpy()[:-1], (1, 0), constant_values=1.0), device=device, requires_grad=False)
-        self.sqrt_recip_alphas = Tensor((1.0 / alphas)**(1/2), device=device, requires_grad=False)
+        self.alphas_cumprod_prev = Tensor(
+            np.pad(alphas_cumprod.numpy()[:-1], (1, 0), constant_values=1.0),
+            device=device,
+            requires_grad=False
+        )
+        self.sqrt_recip_alphas = Tensor(
+            (1.0 / alphas) ** (1 / 2),
+            device=device,
+            requires_grad=False
+        )
 
-        self.sqrt_alphas_cumprod = Tensor((alphas_cumprod)**(1/2), device=device, requires_grad=False)
-        self.sqrt_one_minus_alphas_cumprod = Tensor((1. - alphas_cumprod)**(1/2), device=device, requires_grad=False)
+        self.sqrt_alphas_cumprod = Tensor(
+            (alphas_cumprod) ** (1 / 2),
+            device=device,
+            requires_grad=False
+        )
+        self.sqrt_one_minus_alphas_cumprod = Tensor(
+            (1. - alphas_cumprod) ** (1 / 2),
+            device=device,
+            requires_grad=False
+        )
 
-        self.posterior_variance = Tensor(betas.numpy() * (1. - self.alphas_cumprod_prev.numpy()) / (1. - alphas_cumprod.numpy()), device=device, requires_grad=False)
+        self.posterior_variance = Tensor(
+            betas.numpy() * (1. - self.alphas_cumprod_prev.numpy())
+            / (1. - alphas_cumprod.numpy()),
+            device=device,
+            requires_grad=False
+        )
 
     def q_sample(self, x_0, t, noise=None):
         '''
@@ -898,15 +935,17 @@ class Diffusion(Module):
         Gets x_0 in range [-1, 1] as input
         '''
         shape = x_0.shape
-        noise = init.randn(*shape).data if noise is None else noise
+        noise = x_0.device.randn(*shape, device=x_0.device) if noise is None else noise
         print(x_0.shape, "<-- x0 shape")
-        print((extract(self.sqrt_alphas_cumprod, t, x_0.shape)).shape, "<---- extract shape")
+        print((extract(self.sqrt_alphas_cumprod, t, x_0.shape)).shape,
+              "<---- extract shape")
+        print(x_0.device, noise.device)
         return (
             (extract(self.sqrt_alphas_cumprod, t, x_0.shape).broadcast_to(shape) * x_0 +
-            extract(self.sqrt_one_minus_alphas_cumprod, t, x_0.shape).broadcast_to(shape) * noise).data
+             extract(self.sqrt_one_minus_alphas_cumprod, t, x_0.shape).broadcast_to(shape) * noise).data
         )
 
-    def get_q_sample(self, x_0, t:int):
+    def get_q_sample(self, x_0, t):
         '''
         Gets x_0 in range [-1, 1] as input
         '''
@@ -935,18 +974,22 @@ class Diffusion(Module):
         sqrt_one_minus_alphas_cumprod_t = extract(
             self.sqrt_one_minus_alphas_cumprod, t, x.shape
         )
-        sqrt_recip_alphas_t = extract(self.sqrt_recip_alphas, t, x.shape)
-        
+        sqrt_recip_alphas_t = extract(
+            self.sqrt_recip_alphas, t, x.shape
+        )
+
         # Equation 11 in the paper
         # Use our model (noise predictor) to predict the mean
         model_mean = (sqrt_recip_alphas_t * (
-            x - betas_t * model(x, t) / sqrt_one_minus_alphas_cumprod_t
+                x - betas_t * model(x, t) / sqrt_one_minus_alphas_cumprod_t
         )).data
 
         if t_index == 0:
             return model_mean
         else:
-            posterior_variance_t = extract(self.posterior_variance, t, x.shape)
+            posterior_variance_t = extract(
+                self.posterior_variance, t, x.shape
+            )
             noise = init.randn(*x.shape, requires_grad=False)
             # Algorithm 2 line 4:
             return model_mean + ops.sqrt(posterior_variance_t).data * noise
@@ -961,68 +1004,54 @@ class Diffusion(Module):
         img = init.randn(*shape, device=device, requires_grad=False)
         imgs = []
 
-        for i in tqdm(reversed(range(0, self.timesteps)), desc='sampling loop time step', total=self.timesteps):
-            img = self.p_sample(model, img, init.constant((b,), i, device=device, dtype="int64", requires_grad=False), i)
+        for i in tqdm(reversed(range(0, self.timesteps)),
+                      desc='sampling loop time step', total=self.timesteps):
+            img = self.p_sample(model, img,
+                                init.constant((b,), i, device=device,
+                                              dtype="int64",
+                                              requires_grad=False), i)
             imgs.append(img.cpu().numpy())
         return imgs
 
-    
     def sample(self, image_size, batch_size=16, channels=3):
-        return self.p_sample_loop(shape=(batch_size, channels, image_size, image_size))
+        return self.p_sample_loop(
+            shape=(batch_size, channels, image_size, image_size))
 
     def forward(self, X):
         self.sqrt_alpha_cumprod = self.sqrt_alphas_cumprod[self.t]
-        self.sqrt_one_minus_alpha_cumprod = self.sqrt_one_minus_alphas_cumprod[self.t]
+        self.sqrt_one_minus_alpha_cumprod = self.sqrt_one_minus_alphas_cumprod[
+            self.t]
 
         noise = init.randn(X.shape, device=X.device)
         return self.sqrt_alpha_cumprod * X + self.sqrt_one_minus_alpha_cumprod * noise, noise
 
 
-def extract(a: Tensor, t, x_shape, device=None):
+def extract(x, t, x_shape):
     '''
     Same logics as a.gather(-1, t)
     '''
-    # import torch
-    # a = torch.Tensor(a.numpy())
-    # if isinstance(t, int):
-    #     t = torch.randint(t, t+1, (1,))
-    # if isinstance(t, Tensor):
-    #     t = torch.Tensor(t.numpy())
-    # else:
-    #     t = torch.Tensor(t)
+    batch_size = t.shape[0]
+    device = x.device
+    out_handle = device.empty((batch_size,))
 
-    # b, *_ = t.shape
-    # out = a.gather(-1, t)
-    # return Tensor(out.reshape(b, *((1,) * (len(x_shape) - 1))).numpy())
-    # print(a.shape, t.shape, x_shape)
-    b, *_ = t.shape
-    device = array_api.default_device() if device is None else device
-    out_handle = device.empty((b, ))
-    
-    for i in range(b):
-        out_handle[i] = a.cached_data[int(t.numpy()[i])]
+    for i in range(batch_size):
+        ind = int(t.numpy()[i])
+        out_handle[i] = x.cached_data[ind]
 
-    new_shape = (b, *((1,) * (len(x_shape) - 1)))
-   # if len(new_shape) > 1:
-       # new_shape = list(new_shape)
-        #new_shape[0] = 1
-        #new_shape[1] = b
+    new_shape = (batch_size,) + (1,) * (len(x_shape) - 1)
 
-    # print(Tensor(out_handle, device=device).reshape(
-    #         new_shape
-    #         ).shape)
-    return Tensor(out_handle, device=device).reshape(
-            new_shape
-            )
+    return Tensor(out_handle, device=device).reshape(new_shape)
+
 
 def linear_beta_schedule(timesteps, device=None):
     scale = 1000 / timesteps
     beta_start = scale * 0.0001
     beta_end = scale * 0.02
-    return Tensor(array_api.linspace(beta_start, beta_end, timesteps), dtype="float32", device=device)
+    return Tensor(array_api.linspace(beta_start, beta_end, timesteps),
+                  dtype="float32", device=device)
 
 
-def cosine_beta_schedule(timesteps, s = 0.008, device=None):
+def cosine_beta_schedule(timesteps, s=0.008, device=None):
     """
     cosine schedule
     as proposed in https://openreview.net/forum?id=-NEXDKk8gZ
@@ -1040,7 +1069,8 @@ def normalize_minus_one_to_one(img):
 
 
 class Embedding(Module):
-    def __init__(self, num_embeddings, embedding_dim, device=None, dtype="float32"):
+    def __init__(self, num_embeddings, embedding_dim, device=None,
+                 dtype="float32"):
         super().__init__()
         """
         Maps one-hot word vectors from a dictionary of fixed size to embeddings.

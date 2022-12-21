@@ -838,7 +838,7 @@ def conv(a, b, stride=1, padding=0, dilation=1):
 
 
 class Abs(TensorOp):
-    def compute(self, X: NDArray) -> NDArray:
+    def compute(self, X):
         return array_api.maximum(X, -X)
 
     def gradient(self, out_grad, node):
