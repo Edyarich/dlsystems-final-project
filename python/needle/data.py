@@ -73,7 +73,7 @@ class Lambda(Transform):
 
 
 class Resize(Transform):
-    def __init__(self, sizes: Tuple[int]):
+    def __init__(self, sizes: Tuple[int, int]):
         self.height, self.width = sizes
 
     def __call__(self, img, **cv2_resize_kwargs):
