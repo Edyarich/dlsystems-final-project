@@ -2,6 +2,7 @@ from typing import List, Optional
 from needle.autograd import Tensor
 from needle import ops, array_api
 import needle.init as init
+from needle.backend_ndarray.ndarray import BackendDevice
 import numpy as np
 from tqdm.auto import tqdm
 
@@ -387,32 +388,29 @@ class Sigmoid(Module):
 
 
 class Block(Module):
-    def __init__(self, in_ch, out_ch, time_emb_dim, up=False):
+    def __init__(self, in_ch, out_ch, time_emb_dim, up=False, device=None):
         super().__init__()
-        self.time_mlp = Linear(time_emb_dim, out_ch)
+        self.time_mlp = Linear(time_emb_dim, out_ch, device=device)
         if up:
-            self.conv1 = Conv(2 * in_ch, out_ch, 3, padding=1)
-            self.transform = ConvTranspose(out_ch, out_ch, 4, 2, 1)
+            self.conv1 = Conv(2 * in_ch, out_ch, 3, padding=1, device=device)
+            self.transform = ConvTranspose(out_ch, out_ch, 4, 2, 1, device=device)
         else:
-            self.conv1 = Conv(in_ch, out_ch, 3, padding=1)
-            self.transform = Conv(out_ch, out_ch, 4, 2, 1)
-        self.conv2 = Conv(out_ch, out_ch, 3, padding=1)
-        self.bnorm1 = BatchNorm2d(out_ch)
-        self.bnorm2 = BatchNorm2d(out_ch)
+            self.conv1 = Conv(in_ch, out_ch, 3, padding=1, device=device)
+            self.transform = Conv(out_ch, out_ch, 4, 2, 1, device=device)
+        self.conv2 = Conv(out_ch, out_ch, 3, padding=1, device=device)
+        self.bnorm1 = BatchNorm2d(out_ch, device=device)
+        self.bnorm2 = BatchNorm2d(out_ch, device=device)
         self.relu = ReLU()
 
     def forward(self, x, t):
-        # First Conv
         h = self.bnorm1(self.relu(self.conv1(x)))
-        # Time embedding
         time_emb = self.relu(self.time_mlp(t))
-        # Extend last 2 dimensions
-        time_emb = time_emb.reshape(time_emb.shape + (1, 1))
-        # Add time channel
+        time_emb = time_emb.reshape(time_emb.shape + (1, 1)).broadcast_to(h.shape)
+
+        print("H.shape =", h.shape)
+        print("time_emb.shape =", time_emb.shape)
         h = h + time_emb
-        # Second Conv
         h = self.bnorm2(self.relu(self.conv2(h)))
-        # Down or Upsample
         return self.transform(h)
 
 
@@ -421,7 +419,7 @@ class Unet(Module):
     A simplified variant of the Unet architecture.
     """
 
-    def __init__(self):
+    def __init__(self, device: Optional[BackendDevice] = None):
         super().__init__()
         image_channels = 3
         down_channels = (32, 64, 128, 256, 512)
@@ -432,12 +430,12 @@ class Unet(Module):
         # Time embedding
         self.time_mlp = Sequential(
             SinusoidalPosEmb(time_emb_dim),
-            Linear(time_emb_dim, time_emb_dim),
+            Linear(time_emb_dim, time_emb_dim, device=device),
             ReLU()
         )
 
         # Initial projection
-        self.conv0 = Conv(image_channels, down_channels[0], 3)
+        self.conv0 = Conv(image_channels, down_channels[0], 3, device=device)
 
         # Downsample
         self.downs = []
@@ -446,17 +444,17 @@ class Unet(Module):
 
         for i in range(len(down_channels) - 1):
             self.downs.append(
-                Block(down_channels[i], down_channels[i + 1], time_emb_dim)
+                Block(down_channels[i], down_channels[i + 1], time_emb_dim, device=device)
             )
             setattr(self, f'down_block_{i}', self.downs[-1])
 
         for i in range(len(up_channels) - 1):
             self.ups.append(
-                Block(up_channels[i], up_channels[i + 1], time_emb_dim, up=True)
+                Block(up_channels[i], up_channels[i + 1], time_emb_dim, up=True, device=device)
             )
             setattr(self, f'up_block_{i}', self.ups[-1])
 
-        self.output = Conv(up_channels[-1], 3, out_dim)
+        self.output = Conv(up_channels[-1], 3, out_dim, device=device)
 
     def forward(self, x: Tensor, timestep: Tensor) -> Tensor:
         # x.shape = (B, C, H, W)
@@ -470,7 +468,9 @@ class Unet(Module):
         for up in self.ups:
             residual_x = residual_inputs.pop()
             # Add residual x as additional channels
-            x = ops.stack((x, residual_x), dim=1)
+            x = ops.stack((x, residual_x), axis=2).reshape(
+                (x.shape[0], 2*x.shape[1], *x.shape[2:])
+            )
             x = up(x, t)
 
         return self.output(x)
@@ -868,19 +868,18 @@ class SinusoidalPosEmb(Module):
         emb = ops.stack(
             (ops.sin(emb), ops.cos(emb)), axis=2
         ).reshape((x.size, self.dim))
-        print(x.device)
         return emb
 
 
 class Diffusion(Module):
     def __init__(
-            self,
-            model,
-            optimizer,
-            timesteps,
-            beta_schedule="linear",
-            loss_type="l1",
-            device=None
+        self,
+        model,
+        optimizer,
+        timesteps,
+        beta_schedule="linear",
+        loss_type="l1",
+        device=None
     ):
         if beta_schedule == 'linear':
             betas = linear_beta_schedule(timesteps, device=device)
@@ -935,11 +934,10 @@ class Diffusion(Module):
         Gets x_0 in range [-1, 1] as input
         '''
         shape = x_0.shape
-        noise = x_0.device.randn(*shape, device=x_0.device) if noise is None else noise
+        noise = x_0.device.randn(*shape) if noise is None else noise
         print(x_0.shape, "<-- x0 shape")
         print((extract(self.sqrt_alphas_cumprod, t, x_0.shape)).shape,
               "<---- extract shape")
-        print(x_0.device, noise.device)
         return (
             (extract(self.sqrt_alphas_cumprod, t, x_0.shape).broadcast_to(shape) * x_0 +
              extract(self.sqrt_one_minus_alphas_cumprod, t, x_0.shape).broadcast_to(shape) * noise).data
@@ -958,7 +956,7 @@ class Diffusion(Module):
     def p_losses(self, x_start, t, noise=None):
         denoise_model = self.model
         if noise is None:
-            noise = init.randn(*x_start.shape)
+            noise = init.randn(*x_start.shape, device=x_start.device)
             if noise.shape != x_start.shape:
                 noise = noise.reshape(x_start.shape)
 
@@ -990,7 +988,7 @@ class Diffusion(Module):
             posterior_variance_t = extract(
                 self.posterior_variance, t, x.shape
             )
-            noise = init.randn(*x.shape, requires_grad=False)
+            noise = init.randn(*x.shape, device=x.device, requires_grad=False)
             # Algorithm 2 line 4:
             return model_mean + ops.sqrt(posterior_variance_t).data * noise
 
@@ -1017,7 +1015,7 @@ class Diffusion(Module):
         return self.p_sample_loop(
             shape=(batch_size, channels, image_size, image_size))
 
-    def forward(self, X):
+    def forward(self, X: Tensor) -> Tensor:
         self.sqrt_alpha_cumprod = self.sqrt_alphas_cumprod[self.t]
         self.sqrt_one_minus_alpha_cumprod = self.sqrt_one_minus_alphas_cumprod[
             self.t]
