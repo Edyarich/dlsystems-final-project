@@ -858,6 +858,110 @@ class Abs(TensorOp):
 def abs(a):
     return Abs()(a)
 
+class MaxPool(TensorOp):
+    def __init__(self, kernel: int, stride: int, padding: int = 0,
+                 dilation: int = 1):
+        self.kernel = kernel
+        self.stride = stride
+        self.padding = padding
+        self.dilation = dilation
+        self.argmax_indices = None
+
+    def _onehot_argmax_indices(self):
+        mask = np.zeros((self.argmax_indices.size, self.kernel**2))
+        mask[np.arange(mask.shape[0]), self.argmax_indices] = 1
+        return mask
+
+    def compute(self, a):
+        padding_arr = (
+            (0,) * 2,
+            (self.padding,) * 2,
+            (self.padding,) * 2,
+            (0,) * 2
+        )
+        a_padded = array_api.pad(a, padding_arr)
+
+        batch_size, height, width, in_ch = a_padded.shape
+        batch_s, height_s, width_s, in_ch_s = a_padded.strides
+
+        modified_kernel = self.kernel + (self.kernel - 1) * (self.dilation - 1)
+        new_shape = (
+            batch_size,
+            len(range(0, height - modified_kernel + 1, self.stride)),
+            len(range(0, width - modified_kernel + 1, self.stride)),
+            self.kernel,
+            self.kernel,
+            in_ch
+        )
+        new_strides = (
+            batch_s,
+            height_s * self.stride,
+            width_s * self.stride,
+            height_s * self.dilation,
+            width_s * self.dilation,
+            in_ch_s
+        )
+        brand_new_shape = new_shape[:3] + (self.kernel**2, in_ch)
+
+        if isinstance(a, np.ndarray):
+            a_modified = np.lib.stride_tricks.as_strided(
+                a_padded,
+                shape=new_shape,
+                strides=new_strides
+            ).reshape(brand_new_shape)
+            self.argmax_indices = a_modified.argmax(axis=3).reshape(-1)
+        elif isinstance(a, NDArray):
+            a_modified = NDArray.make(
+                new_shape,
+                new_strides,
+                a.device,
+                a_padded._handle,
+                a_padded._offset
+            ).compact().reshape(brand_new_shape)
+            self.argmax_indices = a_modified.numpy().argmax(axis=3).reshape(-1)
+        else:
+            raise ValueError(f"Expected np.ndarray or NDArray, got {type(a)}")
+
+        result = a_modified.max(axis=3)
+
+        return result.reshape((
+            batch_size,
+            new_shape[1],
+            new_shape[2],
+            in_ch
+        ))
+
+    def gradient(self, out_grad, node):
+        # grad_shape = (batch, small_height, small_width, in_channels)
+        grad_shape = out_grad.shape
+        unsqueezed_shape = grad_shape[:3] + (1, grad_shape[3])
+        broadcast_shape = grad_shape[:3] + (self.kernel**2, grad_shape[3])
+
+        modified_out_grad = out_grad\
+            .reshape(unsqueezed_shape).broadcast_to(broadcast_shape)
+
+        one_hot_mask = self._onehot_argmax_indices().reshape(
+            grad_shape + (self.kernel**2,),
+        )
+        one_hot_mask = np.swapaxes(one_hot_mask, 3, 4)
+        result = modified_out_grad * Tensor(one_hot_mask, device=out_grad.device)
+        result = result.reshape(
+            grad_shape[:3] + (self.kernel, self.kernel, grad_shape[-1])
+        ).permute(
+            (0, 1, 3, 2, 4, 5)
+        ).reshape((
+            grad_shape[0],
+            grad_shape[1]*self.kernel,
+            grad_shape[2]*self.kernel,
+            grad_shape[3]
+        ))
+
+        return result
+
+
+def maxpool(a, kernel):
+    return MaxPool(kernel, kernel, padding=0, dilation=1)(a)
+
 # Helper functions
 def get_unsq_outp_shape(inp_shape: List[int], axes: Optional[tuple] = None):
     if isinstance(inp_shape, tuple):

@@ -226,7 +226,8 @@ class Tensor(Value):
             cached_data=cached_data,
             requires_grad=requires_grad,
         )
-
+    def __len__(self):
+        return self.shape[0]
     @staticmethod
     def _array_from_numpy(numpy_array, device, dtype):
         if array_api is numpy:
