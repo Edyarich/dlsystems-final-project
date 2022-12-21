@@ -1,10 +1,13 @@
 .idea/
+.vscode/
 .ipynb_checkpoints/
 .mypy_cache/
 .pytest_cache/
+.__pycache__/
 build/
 data/cifar-10-batches-py
 data/landscapes/
 data/cifar-10-python.tar.gz
+done list.txt
 *.pyc
 *.so
