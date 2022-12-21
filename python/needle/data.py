@@ -336,7 +336,8 @@ class LandscapesDataset(Dataset):
 
     def load_sample(self, filename: str) -> np.ndarray:
         img = cv2.imread(filename)
-        return img
+        rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        return rgb_img
 
     def __getitem__(self, index):
         if index >= len(self):
