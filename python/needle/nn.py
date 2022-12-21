@@ -330,42 +330,6 @@ class Conv(Module):
         
         return outp.permute((0, 3, 1, 2))
 
-class ConvTranspose(Module):
-    def __init__(self, in_channels: int, out_channels: int, kernel_size: int,
-                 stride: int = 1, padding: int = 0, output_padding: int = 0,
-                 bias: bool = True, device=None, dtype: str = "float32"):
-        super().__init__()
-
-        conv_padding = output_padding + kernel_size - 1 - padding
-        self.conv = Conv(in_channels, out_channels, kernel_size, 1,
-                         conv_padding, bias, device, dtype, True)
-        self.stride = stride
-
-    def forward(self, x: Tensor) -> Tensor:
-        dilated_x = ops.dilate(
-            x, axes=(2, 3), dilation=self.stride-1, cut_last=True
-        )
-        return self.conv(dilated_x)
-
-class MaxPool(Module):
-    """
-    Multi-channel 2D MaxPool layer
-    IMPORTANT: Accepts inputs in NCHW format, outputs also in NCHW format
-    Only supports padding=0, stride=kernel_size
-    No grouped convolution or dilation
-    Only supports square kernels
-    Image sizes should be divisible by kernel_size
-    """
-    def __init__(self, kernel_size):
-        super().__init__()
-
-        self.kernel_size = kernel_size
-
-    def forward(self, x: Tensor) -> Tensor:
-        # NCHW ==> NHWC ==> NH'W'O ==> NOH'W'
-        _x = x.permute((0, 2, 3, 1))
-        output = ops.maxpool(_x, self.kernel_size)
-        return output.permute((0, 3, 1, 2))
 
 class ConvTranspose(Module):
     def __init__(self, in_channels: int, out_channels: int, kernel_size: int,
@@ -410,6 +374,7 @@ class Sigmoid(Module):
     def forward(self, x: Tensor) -> Tensor:
         return 1 / (1 + ops.exp(-x))
 
+
 class Trash(Module):
     """
     Multi-channel 2D MaxPool layer
@@ -422,9 +387,9 @@ class Trash(Module):
     def __init__(self):
         super().__init__()
 
-
     def forward(self, x: Tensor, *args) -> Tensor:
         return x
+
 
 class Block(Module):
     def __init__(self, in_ch, out_ch, time_emb_dim, up=False):
@@ -465,7 +430,7 @@ class Unet(Module):
         image_channels = 3
         down_channels = (64, 128, 256, 512, 1024)
         up_channels = (1024, 512, 256, 128, 64)
-        out_dim = 1 
+        out_dim = 1
         time_emb_dim = 16
  
         # Time embedding
@@ -510,10 +475,11 @@ class Unet(Module):
         for up in self.ups:
             residual_x = residual_inputs.pop()
             # Add residual x as additional channels
-            x = ops.stack((x, residual_x), dim=1)           
+            x = ops.stack((x, residual_x), dim=1)
             x = up(x, t)
         
         return self.output(x)
+
 
 class RNNCell(Module):
     def __init__(self, input_size, hidden_size, bias=True, nonlinearity='tanh', device=None, dtype="float32"):
@@ -851,9 +817,9 @@ class LSTM(Module):
         """
         seq_len, bs, input_size = X.shape
         if h is None:
-            h0 = init.zeros(self.n_layers, bs, self.hidden_size, device=X.device, 
+            h0 = init.zeros(self.n_layers, bs, self.hidden_size, device=X.device,
                 requires_grad=True)
-            c0 = init.zeros(self.n_layers, bs, self.hidden_size, device=X.device, 
+            c0 = init.zeros(self.n_layers, bs, self.hidden_size, device=X.device,
                 requires_grad=True)
         else:
             h0, c0 = h
@@ -895,11 +861,11 @@ class Diffusion(Module):
         self,
         model,
         optimizer,
-        timesteps, 
-        beta_schedule="linear", 
+        timesteps,
+        beta_schedule="linear",
         loss_type = "l1",
         device=None
-        ):
+    ):
         if beta_schedule == 'linear':
             betas = linear_beta_schedule(timesteps, device=device)
         elif beta_schedule == 'cosine':
@@ -924,8 +890,6 @@ class Diffusion(Module):
         self.sqrt_one_minus_alphas_cumprod = Tensor((1. - alphas_cumprod)**(1/2), device=device, requires_grad=False)
 
         self.posterior_variance = Tensor(betas.numpy() * (1. - self.alphas_cumprod_prev.numpy()) / (1. - alphas_cumprod.numpy()), device=device, requires_grad=False)
-
-        
 
     def q_sample(self, x_0, t, noise=None):
         '''
@@ -985,7 +949,7 @@ class Diffusion(Module):
             posterior_variance_t = extract(self.posterior_variance, t, x.shape)
             noise = init.randn(*x.shape, requires_grad=False)
             # Algorithm 2 line 4:
-            return model_mean + ops.sqrt(posterior_variance_t).data * noise 
+            return model_mean + ops.sqrt(posterior_variance_t).data * noise
 
     # Algorithm 2 (including returning all images)
     def p_sample_loop(self, shape):
@@ -1006,13 +970,13 @@ class Diffusion(Module):
     def sample(self, image_size, batch_size=16, channels=3):
         return self.p_sample_loop(shape=(batch_size, channels, image_size, image_size))
 
-
     def forward(self, X):
         self.sqrt_alpha_cumprod = self.sqrt_alphas_cumprod[self.t]
         self.sqrt_one_minus_alpha_cumprod = self.sqrt_one_minus_alphas_cumprod[self.t]
 
         noise = init.randn(X.shape, device=X.device)
         return self.sqrt_alpha_cumprod * X + self.sqrt_one_minus_alpha_cumprod * noise, noise
+
 
 def extract(a: Tensor, t, x_shape, device=None):
     '''
@@ -1057,6 +1021,7 @@ def linear_beta_schedule(timesteps, device=None):
     beta_end = scale * 0.02
     return Tensor(array_api.linspace(beta_start, beta_end, timesteps), dtype="float32", device=device)
 
+
 def cosine_beta_schedule(timesteps, s = 0.008, device=None):
     """
     cosine schedule
@@ -1069,9 +1034,9 @@ def cosine_beta_schedule(timesteps, s = 0.008, device=None):
     betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
     return Tensor(np.clip(betas, 0, 0.999), device=device, dtype="float32")
 
+
 def normalize_minus_one_to_one(img):
     return img * 2 - 1
-
 
 
 class Embedding(Module):
