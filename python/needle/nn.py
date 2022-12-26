@@ -396,7 +396,7 @@ class Block(Module):
             self.transform = ConvTranspose(out_ch, out_ch, 4, 2, 1, device=device)
         else:
             self.conv1 = Conv(in_ch, out_ch, 3, padding=1, device=device)
-            self.transform = Conv(out_ch, out_ch, 4, 2, 1, device=device)
+            self.transform = MaxPool(2)
         self.conv2 = Conv(out_ch, out_ch, 3, padding=1, device=device)
         self.bnorm1 = BatchNorm2d(out_ch, device=device)
         self.bnorm2 = BatchNorm2d(out_ch, device=device)

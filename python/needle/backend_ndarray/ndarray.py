@@ -261,19 +261,18 @@ class NDArray:
         """
 
         if self.size != prod(new_shape) and -1 not in new_shape:
-            raise ValueError("Wrong new_shape")
+            raise ValueError(f"Wrong new_shape: {self.shape} != {new_shape}")
 
         if not self.is_compact():
-            print("Array is not compact")
             self = self.compact()
 
         strides = NDArray.compact_strides(new_shape)
 
         return self.make(
-            new_shape, 
-            strides, 
-            self._device, 
-            self._handle, 
+            new_shape,
+            strides,
+            self._device,
+            self._handle,
             self._offset
         )
 
@@ -357,10 +356,10 @@ class NDArray:
                 new_strides[j] = 0
 
         return self.make(
-            tuple(new_shape), 
-            tuple(new_strides), 
-            self._device, 
-            self._handle, 
+            tuple(new_shape),
+            tuple(new_strides),
+            self._device,
+            self._handle,
             self._offset
         )
 
