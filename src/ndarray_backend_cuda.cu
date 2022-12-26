@@ -612,15 +612,18 @@ void EwiseExp(const CudaArray& a, CudaArray* out) {
   UnaryOpKernel<Exp><<<dim.grid, dim.block>>>(a.ptr, out->ptr, out->size);
 }
 
+
 void EwiseSin(const CudaArray& a, CudaArray* out) {
   CudaDims dim = CudaOneDim(out->size);
   UnaryOpKernel<Sin><<<dim.grid, dim.block>>>(a.ptr, out->ptr, out->size);
 }
 
+
 void EwiseCos(const CudaArray& a, CudaArray* out) {
   CudaDims dim = CudaOneDim(out->size);
   UnaryOpKernel<Cos><<<dim.grid, dim.block>>>(a.ptr, out->ptr, out->size);
 }
+
 
 void EwiseTanh(const CudaArray& a, CudaArray* out) {
   CudaDims dim = CudaOneDim(out->size);
@@ -853,6 +856,8 @@ PYBIND11_MODULE(ndarray_backend_cuda, m) {
 
   m.def("ewise_log", EwiseLog);
   m.def("ewise_exp", EwiseExp);
+  m.def("ewise_sin", EwiseSin);
+  m.def("ewise_cos", EwiseCos);
   m.def("ewise_tanh", EwiseTanh);
 
   m.def("matmul", Matmul);
