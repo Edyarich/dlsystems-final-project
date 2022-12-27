@@ -162,7 +162,7 @@ class L1Loss(Module):
         super().__init__()
 
     def forward(self, pred: Tensor, target: Tensor):
-        return ops.abs(pred, target).mean()
+        return ops.abs(pred - target).mean()
 
 
 class L2Loss(Module):
@@ -170,7 +170,8 @@ class L2Loss(Module):
         super().__init__()
 
     def forward(self, pred: Tensor, target: Tensor):
-        return ((target - pred) ** 2).mean()
+        loss = (pred - target)**2
+        return loss.mean()
 
 
 class BatchNorm1d(Module):
