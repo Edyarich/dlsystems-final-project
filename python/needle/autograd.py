@@ -226,8 +226,7 @@ class Tensor(Value):
             cached_data=cached_data,
             requires_grad=requires_grad,
         )
-    def __len__(self):
-        return self.shape[0]
+
     @staticmethod
     def _array_from_numpy(numpy_array, device, dtype):
         if array_api is numpy:
@@ -349,7 +348,7 @@ class Tensor(Value):
 
     def __rtruediv__(self, other):
         ones = Tensor(
-            numpy.ones(self.shape, dtype=self.dtype), 
+            numpy.ones(self.shape, dtype=self.dtype),
             device=self.device,
             requires_grad=False
         )
@@ -414,7 +413,7 @@ def compute_gradient_of_variables(output_tensor, out_grad):
     for node in reverse_topo_order:
         node.grad = sum_node_list(node_to_output_grads_list[node])
 
-        if node.is_leaf():
+        if node.is_leaf() or not node.requires_grad:
             continue
 
         neighb_grads = node.op.gradient(node.grad, node)

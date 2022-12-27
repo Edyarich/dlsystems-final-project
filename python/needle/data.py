@@ -149,6 +149,8 @@ class DataLoader:
      """
     dataset: Dataset
     batch_size: Optional[int]
+    device: Optional[BackendDevice]
+    shuffle: bool
 
     def __init__(
             self,

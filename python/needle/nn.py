@@ -871,7 +871,6 @@ class Diffusion(Module):
     def __init__(
         self,
         model,
-        optimizer,
         timesteps,
         beta_schedule="linear",
         loss_type="l1",
@@ -884,7 +883,6 @@ class Diffusion(Module):
         else:
             raise ValueError(f'unknown beta schedule {beta_schedule}')
         self.model = model
-        self.optimizer = optimizer
         if loss_type == "l1":
             self.loss_fn = L1Loss()
         elif loss_type == "l2":
