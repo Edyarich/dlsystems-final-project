@@ -954,7 +954,7 @@ class Diffusion(Module):
         x_noisy = self.q_sample(x_0=x_start, t=t, noise=noise)
         predicted_noise = denoise_model(x_noisy, t)
 
-        loss = self.loss_fn(noise, predicted_noise)
+        loss = self.loss_fn(predicted_noise, noise)
 
         return loss
 
