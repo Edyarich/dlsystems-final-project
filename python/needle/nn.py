@@ -186,6 +186,11 @@ class BatchNorm1d(Module):
         self.running_var = init.ones(dim, device=device, dtype=dtype)
 
     def forward(self, x: Tensor) -> Tensor:
+        unsq_param_shape = [1] * len(x.shape)
+        unsq_param_shape[-1] = self.dim
+        weight = self.weight.reshape(unsq_param_shape).broadcast_to(x.shape)
+        bias = self.bias.reshape(unsq_param_shape).broadcast_to(x.shape)
+
         if self.training:
             reduced_dims = 0,
             mean = ops.mean(x, reduced_dims, False)
@@ -194,11 +199,6 @@ class BatchNorm1d(Module):
             broad_var = var.reshape((1, self.dim)).broadcast_to(x.shape)
             normalized_x = (x - broad_mean) / ops.sqrt(broad_var + self.eps)
 
-            unsq_param_shape = [1] * len(x.shape)
-            unsq_param_shape[-1] = self.dim
-            weight = self.weight.reshape(unsq_param_shape).broadcast_to(x.shape)
-            bias = self.bias.reshape(unsq_param_shape).broadcast_to(x.shape)
-
             self.running_mean *= (1 - self.momentum)
             self.running_mean += self.momentum * mean.data
             self.running_var *= (1 - self.momentum)
@@ -206,13 +206,11 @@ class BatchNorm1d(Module):
 
             return weight * normalized_x + bias
         else:
-            broad_mean = self.running_mean.reshape((1, self.dim)).broadcast_to(
-                x.shape)
-            broad_var = self.running_var.reshape((1, self.dim)).broadcast_to(
-                x.shape)
+            broad_mean = self.running_mean.reshape((1, self.dim)).broadcast_to(x.shape)
+            broad_var = self.running_var.reshape((1, self.dim)).broadcast_to(x.shape)
             normalized_x = (x - broad_mean) / ops.sqrt(broad_var + self.eps)
 
-            return self.weight.data * normalized_x + self.bias.data
+            return weight.data * normalized_x + bias.data
 
 
 class BatchNorm2d(BatchNorm1d):
@@ -407,8 +405,6 @@ class Block(Module):
         time_emb = self.relu(self.time_mlp(t))
         time_emb = time_emb.reshape(time_emb.shape + (1, 1)).broadcast_to(h.shape)
 
-        print("H.shape =", h.shape)
-        print("time_emb.shape =", time_emb.shape)
         h = h + time_emb
         h = self.bnorm2(self.relu(self.conv2(h)))
         return self.transform(h)
@@ -930,14 +926,10 @@ class Diffusion(Module):
     def q_sample(self, x_0, t, noise=None):
         '''
         q_sample - sample function in forward process
-    
         Gets x_0 in range [-1, 1] as input
         '''
         shape = x_0.shape
         noise = x_0.device.randn(*shape) if noise is None else noise
-        print(x_0.shape, "<-- x0 shape")
-        print((extract(self.sqrt_alphas_cumprod, t, x_0.shape)).shape,
-              "<---- extract shape")
         return (
             (extract(self.sqrt_alphas_cumprod, t, x_0.shape).broadcast_to(shape) * x_0 +
              extract(self.sqrt_one_minus_alphas_cumprod, t, x_0.shape).broadcast_to(shape) * noise).data

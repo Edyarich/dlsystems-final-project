@@ -204,6 +204,7 @@ class DataLoader:
     def __len__(self) -> int:
         return (len(self.dataset) + self.batch_size - 1) // self.batch_size
 
+
 class MNISTDataset(Dataset):
     def __init__(
             self,
