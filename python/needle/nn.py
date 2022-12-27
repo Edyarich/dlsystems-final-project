@@ -960,13 +960,13 @@ class Diffusion(Module):
         return loss
 
     def p_sample(self, model, x, t, t_index):
-        betas_t = extract(self.betas, t, x.shape)
+        betas_t = extract(self.betas, t, x.shape).data
         sqrt_one_minus_alphas_cumprod_t = extract(
             self.sqrt_one_minus_alphas_cumprod, t, x.shape
-        )
+        ).data
         sqrt_recip_alphas_t = extract(
             self.sqrt_recip_alphas, t, x.shape
-        )
+        ).data
 
         # Equation 11 in the paper
         # Use our model (noise predictor) to predict the mean
@@ -979,10 +979,10 @@ class Diffusion(Module):
         else:
             posterior_variance_t = extract(
                 self.posterior_variance, t, x.shape
-            )
+            ).data
             noise = init.randn(*x.shape, device=x.device, requires_grad=False)
             # Algorithm 2 line 4:
-            return model_mean + ops.sqrt(posterior_variance_t).data * noise
+            return model_mean + ops.sqrt(posterior_variance_t) * noise
 
     # Algorithm 2 (including returning all images)
     def p_sample_loop(self, shape):
@@ -996,11 +996,19 @@ class Diffusion(Module):
 
         for i in tqdm(reversed(range(0, self.timesteps)),
                       desc='sampling loop time step', total=self.timesteps):
-            img = self.p_sample(model, img,
-                                init.constant((b,), i, device=device,
-                                              dtype="int64",
-                                              requires_grad=False), i)
-            imgs.append(img.cpu().numpy())
+            img = self.p_sample(
+                model,
+                img,
+                init.constant(
+                    (b,),
+                    i,
+                    device=device,
+                    dtype="int64",
+                    requires_grad=False
+                ),
+                i
+            )
+            imgs.append(img.detach().cpu().numpy())
         return imgs
 
     def sample(self, image_size, batch_size=16, channels=3):
