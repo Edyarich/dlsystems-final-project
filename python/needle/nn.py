@@ -5,6 +5,7 @@ import needle.init as init
 from needle.backend_ndarray.ndarray import BackendDevice
 import numpy as np
 from tqdm.auto import tqdm
+import math
 
 
 class Parameter(Tensor):
@@ -158,17 +159,11 @@ class SoftmaxLoss(Module):
 
 
 class L1Loss(Module):
-    def __init__(self):
-        super().__init__()
-
     def forward(self, pred: Tensor, target: Tensor):
         return ops.abs(pred - target).mean()
 
 
 class L2Loss(Module):
-    def __init__(self):
-        super().__init__()
-
     def forward(self, pred: Tensor, target: Tensor):
         loss = (pred - target)**2
         return loss.mean()
@@ -384,93 +379,6 @@ class MaxPool(Module):
 class Sigmoid(Module):
     def forward(self, x: Tensor) -> Tensor:
         return 1 / (1 + ops.exp(-x))
-
-
-class Block(Module):
-    def __init__(self, in_ch, out_ch, time_emb_dim, up=False, device=None):
-        super().__init__()
-        self.time_mlp = Linear(time_emb_dim, out_ch, device=device)
-        if up:
-            self.conv1 = Conv(2 * in_ch, out_ch, 3, padding=1, device=device)
-            self.transform = ConvTranspose(out_ch, out_ch, 4, 2, 1, device=device)
-        else:
-            self.conv1 = Conv(in_ch, out_ch, 3, padding=1, device=device)
-            self.transform = MaxPool(2)
-        self.conv2 = Conv(out_ch, out_ch, 3, padding=1, device=device)
-        self.bnorm1 = BatchNorm2d(out_ch, device=device)
-        self.bnorm2 = BatchNorm2d(out_ch, device=device)
-        self.relu = ReLU()
-
-    def forward(self, x, t):
-        h = self.bnorm1(self.relu(self.conv1(x)))
-        time_emb = self.relu(self.time_mlp(t))
-        time_emb = time_emb.reshape(time_emb.shape + (1, 1)).broadcast_to(h.shape)
-
-        h = h + time_emb
-        h = self.bnorm2(self.relu(self.conv2(h)))
-        return self.transform(h)
-
-
-class Unet(Module):
-    """
-    A simplified variant of the Unet architecture.
-    """
-
-    def __init__(self, device: Optional[BackendDevice] = None):
-        super().__init__()
-        image_channels = 3
-        down_channels = (32, 64, 128, 256, 512)
-        up_channels = (512, 256, 128, 64, 32)
-        out_dim = 1
-        time_emb_dim = 16
-
-        # Time embedding
-        self.time_mlp = Sequential(
-            SinusoidalPosEmb(time_emb_dim),
-            Linear(time_emb_dim, time_emb_dim, device=device),
-            ReLU()
-        )
-
-        # Initial projection
-        self.conv0 = Conv(image_channels, down_channels[0], 3, device=device)
-
-        # Downsample
-        self.downs = []
-        # Upsample
-        self.ups = []
-
-        for i in range(len(down_channels) - 1):
-            self.downs.append(
-                Block(down_channels[i], down_channels[i + 1], time_emb_dim, device=device)
-            )
-            setattr(self, f'down_block_{i}', self.downs[-1])
-
-        for i in range(len(up_channels) - 1):
-            self.ups.append(
-                Block(up_channels[i], up_channels[i + 1], time_emb_dim, up=True, device=device)
-            )
-            setattr(self, f'up_block_{i}', self.ups[-1])
-
-        self.output = Conv(up_channels[-1], 3, out_dim, device=device)
-
-    def forward(self, x: Tensor, timestep: Tensor) -> Tensor:
-        # x.shape = (B, C, H, W)
-        # timestep.shape = (B,)
-        t = self.time_mlp(timestep)
-        x = self.conv0(x)
-        residual_inputs = []
-        for down in self.downs:
-            x = down(x, t)
-            residual_inputs.append(x)
-        for up in self.ups:
-            residual_x = residual_inputs.pop()
-            # Add residual x as additional channels
-            x = ops.stack((x, residual_x), axis=2).reshape(
-                (x.shape[0], 2*x.shape[1], *x.shape[2:])
-            )
-            x = up(x, t)
-
-        return self.output(x)
 
 
 class RNNCell(Module):
@@ -848,6 +756,93 @@ class LSTM(Module):
         ops.stack(h0_arr, 0), ops.stack(c0_arr, 0))
 
 
+class Block(Module):
+    def __init__(self, in_ch, out_ch, time_emb_dim, up=False, device=None):
+        super().__init__()
+        self.time_mlp = Linear(time_emb_dim, out_ch, device=device)
+        if up:
+            self.conv1 = Conv(2 * in_ch, out_ch, 3, padding=1, device=device)
+            self.transform = ConvTranspose(out_ch, out_ch, 4, 2, 1, device=device)
+        else:
+            self.conv1 = Conv(in_ch, out_ch, 3, padding=1, device=device)
+            self.transform = MaxPool(2)
+        self.conv2 = Conv(out_ch, out_ch, 3, padding=1, device=device)
+        self.bnorm1 = BatchNorm2d(out_ch, device=device)
+        self.bnorm2 = BatchNorm2d(out_ch, device=device)
+        self.relu = ReLU()
+
+    def forward(self, x, t):
+        h = self.bnorm1(self.relu(self.conv1(x)))
+        time_emb = self.relu(self.time_mlp(t))
+        time_emb = time_emb.reshape(time_emb.shape + (1, 1)).broadcast_to(h.shape)
+
+        h = h + time_emb
+        h = self.bnorm2(self.relu(self.conv2(h)))
+        return self.transform(h)
+
+
+class Unet(Module):
+    """
+    A simplified variant of the Unet architecture.
+    """
+
+    def __init__(self, device: Optional[BackendDevice] = None):
+        super().__init__()
+        image_channels = 3
+        down_channels = (32, 64)#(32, 64, 128, 256, 512)
+        up_channels = (64, 32)#(512, 256, 128, 64, 32)
+        out_dim = 1
+        time_emb_dim = 16
+
+        # Time embedding
+        self.time_mlp = Sequential(
+            SinusoidalPosEmb(time_emb_dim),
+            Linear(time_emb_dim, time_emb_dim, device=device),
+            ReLU()
+        )
+
+        # Initial projection
+        self.conv0 = Conv(image_channels, down_channels[0], 3, device=device)
+
+        # Downsample
+        self.downs = []
+        # Upsample
+        self.ups = []
+
+        for i in range(len(down_channels) - 1):
+            self.downs.append(
+                Block(down_channels[i], down_channels[i + 1], time_emb_dim, device=device)
+            )
+            setattr(self, f'down_block_{i}', self.downs[-1])
+
+        for i in range(len(up_channels) - 1):
+            self.ups.append(
+                Block(up_channels[i], up_channels[i + 1], time_emb_dim, up=True, device=device)
+            )
+            setattr(self, f'up_block_{i}', self.ups[-1])
+
+        self.output = Conv(up_channels[-1], 3, out_dim, device=device)
+
+    def forward(self, x: Tensor, timestep: Tensor) -> Tensor:
+        # x.shape = (B, C, H, W)
+        # timestep.shape = (B,)
+        t = self.time_mlp(timestep)
+        x = self.conv0(x)
+        residual_inputs = []
+        for down in self.downs:
+            x = down(x, t)
+            residual_inputs.append(x)
+        for up in self.ups:
+            residual_x = residual_inputs.pop()
+            # Add residual x as additional channels
+            x = ops.stack((x, residual_x), axis=2).reshape(
+                (x.shape[0], 2*x.shape[1], *x.shape[2:])
+            )
+            x = up(x, t)
+
+        return self.output(x)
+
+
 class SinusoidalPosEmb(Module):
     def __init__(self, dim: int):
         super().__init__()
@@ -856,7 +851,6 @@ class SinusoidalPosEmb(Module):
     def forward(self, x: Tensor) -> Tensor:
         # x.shape = (batch_size,)
         # Returns emb with shape = (batch_size, self.dim)
-        import math
         device = x.device
         half_dim = self.dim // 2
         emb = math.log(10000) / (half_dim - 1)
