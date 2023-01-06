@@ -30,25 +30,24 @@ if __name__ == '__main__':
     batch_size = 12
     dataloader = ndl.data.DataLoader(dataset, batch_size)
 
-    timesteps = 300
+    timesteps = 50
     module = nn.Diffusion(model, timesteps, loss_type="l2",
                           device=device)
 
     tracker = SummaryTracker()
 
-    for epoch in range(epochs):
+    result = module.sample(64, 4, 3)
+
+    for epoch in range(0):
         for step, batch in enumerate(tqdm(dataloader)):
             # Algorithm 1 line 3: sample t uniformally for every example in the batch
-            if step not in (0, len(dataloader) - 1):
-                continue
-
             optimizer.reset_grad()
             batch = ndl.Tensor(batch, device=device)
-            t = Tensor(np.random.randint(0, timesteps, (len(batch),)),
+            ts = Tensor(np.random.randint(0, timesteps, (len(batch),)),
                        device=device,
                        requires_grad=False)
 
-            loss = module.p_losses(batch, t)
+            loss = module.p_losses(batch, ts)
 
             if step % 10 == 0:
                 print("Loss:", loss.cached_data[0])
