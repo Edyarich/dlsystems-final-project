@@ -310,6 +310,9 @@ class Tensor(Value):
     def __str__(self):
         return self.realize_cached_data().__str__()
 
+    def __len__(self):
+        return self.shape[0]
+
     def __add__(self, other):
         if isinstance(other, Tensor):
             return needle.ops.EWiseAdd()(self, other)

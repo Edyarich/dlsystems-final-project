@@ -789,8 +789,8 @@ class Unet(Module):
     def __init__(self, device: Optional[BackendDevice] = None):
         super().__init__()
         image_channels = 3
-        down_channels = (32, 64)#(32, 64, 128, 256, 512)
-        up_channels = (64, 32)#(512, 256, 128, 64, 32)
+        down_channels = (32, 64, 128)
+        up_channels = down_channels[::-1]
         out_dim = 1
         time_emb_dim = 16
 
@@ -844,6 +844,8 @@ class Unet(Module):
 
 
 class SinusoidalPosEmb(Module):
+    DENOM_BASEMENT = 10000
+
     def __init__(self, dim: int):
         super().__init__()
         self.dim = dim
@@ -853,7 +855,7 @@ class SinusoidalPosEmb(Module):
         # Returns emb with shape = (batch_size, self.dim)
         device = x.device
         half_dim = self.dim // 2
-        emb = math.log(10000) / (half_dim - 1)
+        emb = math.log(self.DENOM_BASEMENT) / (half_dim - 1)
         emb = ops.exp(Tensor(range(half_dim), device=device) * -emb)
         emb = x.broadcast_to((x.size, 1)) @ emb.broadcast_to((1, emb.size))
         emb = ops.stack(
@@ -862,7 +864,7 @@ class SinusoidalPosEmb(Module):
         return emb
 
 
-class Diffusion(Module):
+class Diffusion:
     def __init__(
         self,
         model,
@@ -872,12 +874,12 @@ class Diffusion(Module):
         device=None
     ):
         if beta_schedule == 'linear':
-            betas = linear_beta_schedule(timesteps, device=device)
+            self.betas = linear_beta_schedule(timesteps, device=device)
         elif beta_schedule == 'cosine':
-            betas = cosine_beta_schedule(timesteps, device=device)
+            self.betas = cosine_beta_schedule(timesteps, device=device)
         else:
             raise ValueError(f'unknown beta schedule {beta_schedule}')
-        self.model = model
+        self.denoise_model = model
         if loss_type == "l1":
             self.loss_fn = L1Loss()
         elif loss_type == "l2":
@@ -885,7 +887,9 @@ class Diffusion(Module):
         else:
             raise NotImplementedError(f"Unknown loss {loss_type}")
 
-        alphas = 1.0 - betas
+        self.timesteps = timesteps
+
+        alphas = 1.0 - self.betas
         alphas_cumprod = array_api.cumprod(alphas, axis=0)
         self.alphas_cumprod_prev = Tensor(
             np.pad(alphas_cumprod.numpy()[:-1], (1, 0), constant_values=1.0),
@@ -897,7 +901,6 @@ class Diffusion(Module):
             device=device,
             requires_grad=False
         )
-
         self.sqrt_alphas_cumprod = Tensor(
             (alphas_cumprod) ** (1 / 2),
             device=device,
@@ -910,7 +913,7 @@ class Diffusion(Module):
         )
 
         self.posterior_variance = Tensor(
-            betas.numpy() * (1. - self.alphas_cumprod_prev.numpy())
+            self.betas.numpy() * (1. - self.alphas_cumprod_prev.numpy())
             / (1. - alphas_cumprod.numpy()),
             device=device,
             requires_grad=False
@@ -939,27 +942,26 @@ class Diffusion(Module):
         return out.data / out.numpy().max()
 
     def p_losses(self, x_start, t, noise=None):
-        denoise_model = self.model
         if noise is None:
             noise = init.randn(*x_start.shape, device=x_start.device)
             if noise.shape != x_start.shape:
                 noise = noise.reshape(x_start.shape)
 
         x_noisy = self.q_sample(x_0=x_start, t=t, noise=noise)
-        predicted_noise = denoise_model(x_noisy, t)
+        predicted_noise = self.denoise_model(x_noisy, t)
 
         loss = self.loss_fn(predicted_noise, noise)
 
         return loss
 
     def p_sample(self, model, x, t, t_index):
-        betas_t = extract(self.betas, t, x.shape).data
+        betas_t = extract(self.betas, t, x.shape).data.broadcast_to(x.shape)
         sqrt_one_minus_alphas_cumprod_t = extract(
             self.sqrt_one_minus_alphas_cumprod, t, x.shape
-        ).data
+        ).data.broadcast_to(x.shape)
         sqrt_recip_alphas_t = extract(
             self.sqrt_recip_alphas, t, x.shape
-        ).data
+        ).data.broadcast_to(x.shape)
 
         # Equation 11 in the paper
         # Use our model (noise predictor) to predict the mean
@@ -972,17 +974,17 @@ class Diffusion(Module):
         else:
             posterior_variance_t = extract(
                 self.posterior_variance, t, x.shape
-            ).data
+            ).data.broadcast_to(x.shape)
             noise = init.randn(*x.shape, device=x.device, requires_grad=False)
             # Algorithm 2 line 4:
             return model_mean + ops.sqrt(posterior_variance_t) * noise
 
     # Algorithm 2 (including returning all images)
     def p_sample_loop(self, shape):
-        model = self.model
-        device = next(model.parameters()).device
+        model = self.denoise_model
+        device = model.parameters()[0].device
 
-        b = shape[0]
+        batch_size = shape[0]
         # start from pure noise (for each example in the batch)
         img = init.randn(*shape, device=device, requires_grad=False)
         imgs = []
@@ -993,28 +995,19 @@ class Diffusion(Module):
                 model,
                 img,
                 init.constant(
-                    (b,),
-                    i,
+                    batch_size,
+                    c=i,
                     device=device,
-                    dtype="int64",
                     requires_grad=False
                 ),
-                i
+                t_index=i
             )
-            imgs.append(img.detach().cpu().numpy())
+            imgs.append(img.detach().numpy())
         return imgs
 
-    def sample(self, image_size, batch_size=16, channels=3):
+    def sample(self, image_size, batch_size, channels=3):
         return self.p_sample_loop(
             shape=(batch_size, channels, image_size, image_size))
-
-    def forward(self, X: Tensor) -> Tensor:
-        self.sqrt_alpha_cumprod = self.sqrt_alphas_cumprod[self.t]
-        self.sqrt_one_minus_alpha_cumprod = self.sqrt_one_minus_alphas_cumprod[
-            self.t]
-
-        noise = init.randn(X.shape, device=X.device)
-        return self.sqrt_alpha_cumprod * X + self.sqrt_one_minus_alpha_cumprod * noise, noise
 
 
 def extract(x, t, x_shape):
@@ -1053,41 +1046,3 @@ def cosine_beta_schedule(timesteps, s=0.008, device=None):
     alphas_cumprod = alphas_cumprod / alphas_cumprod[0]
     betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
     return Tensor(np.clip(betas, 0, 0.999), device=device, dtype="float32")
-
-
-def normalize_minus_one_to_one(img):
-    return img * 2 - 1
-
-
-class Embedding(Module):
-    def __init__(self, num_embeddings, embedding_dim, device=None,
-                 dtype="float32"):
-        super().__init__()
-        """
-        Maps one-hot word vectors from a dictionary of fixed size to embeddings.
-
-        Parameters:
-        num_embeddings (int) - Size of the dictionary
-        embedding_dim (int) - The size of each embedding vector
-
-        Variables:
-        weight - The learnable weights of shape (num_embeddings, embedding_dim)
-            initialized from N(0, 1).
-        """
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
-
-    def forward(self, x: Tensor) -> Tensor:
-        """
-        Maps word indices to one-hot vectors, and projects to embedding vectors
-
-        Input:
-        x of shape (seq_len, bs)
-
-        Output:
-        output of shape (seq_len, bs, embedding_dim)
-        """
-        ### BEGIN YOUR SOLUTION
-        raise NotImplementedError()
-        ### END YOUR SOLUTION
