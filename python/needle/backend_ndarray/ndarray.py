@@ -84,6 +84,14 @@ def all_devices():
     return [cpu(), cuda(), cpu_numpy()]
 
 
+def _find_device(device_name: str) -> BackendDevice:
+    for device in all_devices():
+        if device.name == device_name:
+            return device
+
+    return default_device()
+
+
 class NDArray:
     """A generic ND array class that may contain multipe different backends
     i.e., a Numpy backend, a native CPU backend, or a GPU backend.
@@ -173,6 +181,14 @@ class NDArray:
     @property
     def size(self):
         return prod(self._shape)
+
+    def __getstate__(self):
+        # Method for correct pickle serialization of NDArray
+        # https://codefather.tech/blog/python-pickle/
+        return {'data': self.numpy(), 'device': self.device.name}
+
+    def __setstate__(self, state):
+        self.__init__(state['data'], _find_device(state['device']))
 
     def __repr__(self):
         return "NDArray(" + self.numpy().__str__() + f", device={self.device})"

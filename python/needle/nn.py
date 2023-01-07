@@ -1,8 +1,11 @@
-from typing import List, Optional
+from typing import List, Optional, TypeVar, OrderedDict as type_OrderedDict
+from collections import OrderedDict
 from needle.autograd import Tensor
 from needle import ops, array_api
 import needle.init as init
 from needle.backend_ndarray.ndarray import BackendDevice
+
+STATE_DICT_T = type_OrderedDict[str, object]
 
 
 class Parameter(Tensor):
@@ -47,6 +50,24 @@ def _child_modules(value: object) -> List["Module"]:
         return []
 
 
+def _extract_states(value: object, curr_name: str = '') -> STATE_DICT_T:
+    prefix = curr_name + '.' if len(curr_name) > 0 else curr_name
+    state_dict: STATE_DICT_T = OrderedDict()
+
+    if isinstance(value, Module):
+        return _extract_states(value.__dict__, curr_name)
+    elif isinstance(value, (dict, OrderedDict)):
+        for key, val in value.items():
+            state_dict.update(_extract_states(val, prefix + key))
+        return state_dict
+    elif isinstance(value, (list, tuple)):
+        for i, val in enumerate(value):
+            state_dict.update(_extract_states(val, prefix + str(i)))
+        return state_dict
+    else:
+        return OrderedDict([(curr_name, value)])
+
+
 class Module:
     def __init__(self):
         self.training = True
@@ -57,6 +78,16 @@ class Module:
 
     def _children(self) -> List["Module"]:
         return _child_modules(self.__dict__)
+
+    def parameters_count(self) -> int:
+        return sum(p.size for p in self.parameters() if p.requires_grad)
+
+    def state_dict(self) -> type_OrderedDict[str, Tensor]:
+        return _extract_states(self.__dict__)
+
+    def load_state_dict(self, state_dict: type_OrderedDict[str, Tensor]):
+        for state_name, state_value in state_dict.items():
+            self._change_state(state_name, state_value)
 
     def eval(self):
         self.training = False
@@ -70,6 +101,22 @@ class Module:
 
     def __call__(self, *args, **kwargs):
         return self.forward(*args, **kwargs)
+
+    def __repr__(self):
+        return self.__class__.__name__
+
+    def _change_state(self, state_name: str, new_value: object):
+        attr_names = state_name.split('.')
+        attr = self
+
+        for i, attr_name in enumerate(attr_names):
+            if i + 1 != len(attr_names):
+                if attr_name.isdigit():
+                    attr = attr[int(attr_name)]  # type: ignore
+                else:
+                    attr = getattr(attr, attr_name)
+            else:
+                setattr(attr, attr_name, new_value)
 
 
 class Identity(Module):
@@ -162,7 +209,7 @@ class L1Loss(Module):
 
 class L2Loss(Module):
     def forward(self, pred: Tensor, target: Tensor):
-        loss = (pred - target)**2
+        loss = (pred - target) ** 2
         return loss.mean()
 
 
@@ -199,8 +246,10 @@ class BatchNorm1d(Module):
 
             return weight * normalized_x + bias
         else:
-            broad_mean = self.running_mean.reshape((1, self.dim)).broadcast_to(x.shape)
-            broad_var = self.running_var.reshape((1, self.dim)).broadcast_to(x.shape)
+            broad_mean = self.running_mean.reshape((1, self.dim)).broadcast_to(
+                x.shape)
+            broad_var = self.running_var.reshape((1, self.dim)).broadcast_to(
+                x.shape)
             normalized_x = (x - broad_mean) / ops.sqrt(broad_var + self.eps)
 
             return weight.data * normalized_x + bias.data
@@ -750,4 +799,4 @@ class LSTM(Module):
                     output.append(h0_arr[j])
 
         return ops.stack(output, 0), (
-        ops.stack(h0_arr, 0), ops.stack(c0_arr, 0))
+            ops.stack(h0_arr, 0), ops.stack(c0_arr, 0))

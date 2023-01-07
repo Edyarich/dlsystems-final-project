@@ -69,13 +69,11 @@ class Unet(nn.Module):
             self.downs.append(
                 UnetBlock(down_channels[i], down_channels[i + 1], time_emb_dim, device=device)
             )
-            setattr(self, f'down_block_{i}', self.downs[-1])
 
         for i in range(len(up_channels) - 1):
             self.ups.append(
                 UnetBlock(up_channels[i], up_channels[i + 1], time_emb_dim, up=True, device=device)
             )
-            setattr(self, f'up_block_{i}', self.ups[-1])
 
         self.output = nn.Conv(up_channels[-1], 3, out_dim, device=device)
 
