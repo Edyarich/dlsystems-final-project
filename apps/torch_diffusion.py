@@ -53,7 +53,7 @@ class Unet(nn.Module):
         )
 
         # Initial projection
-        self.conv0 = nn.Conv(image_channels, down_channels[0], 3, device=device)
+        self.conv0 = nn.Conv2d(image_channels, down_channels[0], 3, device=device)
 
         # Downsample
         self.downs = []
@@ -70,7 +70,7 @@ class Unet(nn.Module):
                 UnetBlock(up_channels[i], up_channels[i + 1], time_emb_dim, up=True, device=device)
             )
 
-        self.output = nn.Conv(up_channels[-1], 3, out_dim, device=device)
+        self.output = nn.Conv2d(up_channels[-1], 3, out_dim, device=device)
 
     def forward(self, x: Tensor, timestep: Tensor) -> Tensor:
         # x.shape = (B, C, H, W)
