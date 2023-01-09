@@ -149,6 +149,8 @@ class DataLoader:
      """
     dataset: Dataset
     batch_size: Optional[int]
+    device: Optional[BackendDevice]
+    shuffle: bool
 
     def __init__(
             self,
@@ -335,9 +337,9 @@ class LandscapesDataset(Dataset):
     def __init__(self, files: List[str], img_size: int = 256,
                  extra_transforms: Optional[List] = None):
         basic_transforms = [
+            Resize((img_size, img_size)),
             Lambda(lambda img: img.astype(np.float32)),
-            Lambda(lambda img: img / 255 * 2 - 1),
-            Resize((img_size, img_size))
+            Lambda(lambda img: img / 255 * 2 - 1)
         ]
         if extra_transforms is not None:
             basic_transforms += extra_transforms

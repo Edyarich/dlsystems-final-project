@@ -310,6 +310,9 @@ class Tensor(Value):
     def __str__(self):
         return self.realize_cached_data().__str__()
 
+    def __len__(self):
+        return self.shape[0]
+
     def __add__(self, other):
         if isinstance(other, Tensor):
             return needle.ops.EWiseAdd()(self, other)
@@ -348,7 +351,7 @@ class Tensor(Value):
 
     def __rtruediv__(self, other):
         ones = Tensor(
-            numpy.ones(self.shape, dtype=self.dtype), 
+            numpy.ones(self.shape, dtype=self.dtype),
             device=self.device,
             requires_grad=False
         )

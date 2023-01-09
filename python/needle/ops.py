@@ -547,6 +547,32 @@ class Tanh(TensorOp):
 def tanh(a):
     return Tanh()(a)
 
+class Sin(TensorOp):
+    def compute(self, a):
+        return array_api.sin(a)
+
+    def gradient(self, out_grad, node):
+        # tanh'(x) = 1 - tanh^2(x)
+        inp = node.inputs[0]
+        return out_grad * cos(inp)
+
+
+def sin(a):
+    return Sin()(a)
+
+class Cos(TensorOp):
+    def compute(self, a):
+        return array_api.cos(a)
+
+    def gradient(self, out_grad, node):
+        # tanh'(x) = 1 - tanh^2(x)
+        inp = node.inputs[0]
+        return out_grad * (-sin(inp))
+
+
+def cos(a):
+    return Cos()(a)
+
 
 class Stack(TensorOp):
     def __init__(self, axis: int):
@@ -809,6 +835,20 @@ class Conv(TensorOp):
 
 def conv(a, b, stride=1, padding=0, dilation=1):
     return Conv(stride, padding, dilation)(a, b)
+
+
+class Abs(TensorOp):
+    def compute(self, X):
+        return array_api.maximum(X, -X)
+
+    def gradient(self, out_grad, node):
+        X = node.inputs[0]
+        mask = -2 * Tensor(X.cached_data < 0, device=out_grad.device) + 1
+        return out_grad * mask
+
+
+def abs(a):
+    return Abs()(a)
 
 
 class MaxPool(TensorOp):

@@ -84,6 +84,14 @@ def all_devices():
     return [cpu(), cuda(), cpu_numpy()]
 
 
+def _find_device(device_name: str) -> BackendDevice:
+    for device in all_devices():
+        if device.name == device_name:
+            return device
+
+    return default_device()
+
+
 class NDArray:
     """A generic ND array class that may contain multipe different backends
     i.e., a Numpy backend, a native CPU backend, or a GPU backend.
@@ -174,6 +182,14 @@ class NDArray:
     def size(self):
         return prod(self._shape)
 
+    def __getstate__(self):
+        # Method for correct pickle serialization of NDArray
+        # https://codefather.tech/blog/python-pickle/
+        return {'data': self.numpy(), 'device': self.device.name}
+
+    def __setstate__(self, state):
+        self.__init__(state['data'], _find_device(state['device']))
+
     def __repr__(self):
         return "NDArray(" + self.numpy().__str__() + f", device={self.device})"
 
@@ -261,19 +277,18 @@ class NDArray:
         """
 
         if self.size != prod(new_shape) and -1 not in new_shape:
-            raise ValueError("Wrong new_shape")
+            raise ValueError(f"Wrong new_shape: {self.shape} != {new_shape}")
 
         if not self.is_compact():
-            print("Array is not compact")
             self = self.compact()
 
         strides = NDArray.compact_strides(new_shape)
 
         return self.make(
-            new_shape, 
-            strides, 
-            self._device, 
-            self._handle, 
+            new_shape,
+            strides,
+            self._device,
+            self._handle,
             self._offset
         )
 
@@ -357,10 +372,10 @@ class NDArray:
                 new_strides[j] = 0
 
         return self.make(
-            tuple(new_shape), 
-            tuple(new_strides), 
-            self._device, 
-            self._handle, 
+            tuple(new_shape),
+            tuple(new_strides),
+            self._device,
+            self._handle,
             self._offset
         )
 
@@ -548,6 +563,16 @@ class NDArray:
         self.device.ewise_exp(self.compact()._handle, out._handle)
         return out
 
+    def sin(self):
+        out = NDArray.make(self.shape, device=self.device)
+        self.device.ewise_sin(self.compact()._handle, out._handle)
+        return out
+
+    def cos(self):
+        out = NDArray.make(self.shape, device=self.device)
+        self.device.ewise_cos(self.compact()._handle, out._handle)
+        return out
+
     def tanh(self):
         out = NDArray.make(self.shape, device=self.device)
         self.device.ewise_tanh(self.compact()._handle, out._handle)
@@ -717,7 +742,6 @@ def array(a, dtype="float32", device=None):
     assert dtype == "float32"
     return NDArray(a, device=device)
 
-
 def empty(shape, dtype="float32", device=None):
     device = device if device is not None else default_device()
     return device.empty(shape, dtype)
@@ -727,10 +751,15 @@ def full(shape, fill_value, dtype="float32", device=None):
     device = device if device is not None else default_device()
     return device.full(shape, fill_value, dtype)
 
+def linspace(start, stop, num, device=None):
+    device = device if device is not None else default_device()
+    return NDArray(np.linspace(start, stop, num), device=device)
+
+def cumprod(array, axis=0):
+    return NDArray(np.cumprod(array.numpy(), axis=axis), device=array.device)
 
 def ones(shape, dtype="float32", device=None):
     return full(shape, 1.0, dtype, device)
-
 
 def zeros(shape, dtype="float32", device=None):
     return full(shape, 0.0, dtype, device)
@@ -801,3 +830,9 @@ def mean(a, axis=None, keepdims=False):
 
 def var(a, axis=None, keepdims=False):
     return (a**2).mean(axis, keepdims) - a.mean(axis, keepdims)**2
+
+def sin(a):
+    return a.sin()
+
+def cos(a):
+    return a.cos()

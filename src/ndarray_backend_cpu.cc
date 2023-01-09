@@ -424,6 +424,26 @@ void EwiseExp(const AlignedArray& a, AlignedArray* out) {
   PerformUnaryOp<Exp>(a, out);
 }
 
+void EwiseSin(const AlignedArray& a, AlignedArray* out) {
+  struct Sin {
+    scalar_t operator () (const scalar_t& elem) {
+      return std::sin(elem);
+    }
+  };
+
+  PerformUnaryOp<Sin>(a, out);
+}
+
+void EwiseCos(const AlignedArray& a, AlignedArray* out) {
+  struct Cos {
+    scalar_t operator () (const scalar_t& elem) {
+      return std::cos(elem);
+    }
+  };
+
+  PerformUnaryOp<Cos>(a, out);
+}
+
 
 void EwiseTanh(const AlignedArray& a, AlignedArray* out) {
   struct Tanh {
@@ -629,6 +649,8 @@ PYBIND11_MODULE(ndarray_backend_cpu, m) {
 
   m.def("ewise_log", EwiseLog);
   m.def("ewise_exp", EwiseExp);
+  m.def("ewise_sin", EwiseSin);
+  m.def("ewise_cos", EwiseCos);
   m.def("ewise_tanh", EwiseTanh);
 
   m.def("matmul", Matmul);
