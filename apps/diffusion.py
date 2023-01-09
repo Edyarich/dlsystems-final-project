@@ -45,7 +45,7 @@ class Unet(nn.Module):
     def __init__(self, device: Optional[BackendDevice] = None):
         super().__init__()
         image_channels = 3
-        down_channels = (32, 64, 128)
+        down_channels = (16, 32)
         up_channels = down_channels[::-1]
         out_dim = 1
         time_emb_dim = 16
