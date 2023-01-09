@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Tuple, Optional
 import sys
 sys.path.append('./python')
 from needle.autograd import Tensor
@@ -42,10 +42,10 @@ class Unet(nn.Module):
     A simplified variant of the Unet architecture.
     """
 
-    def __init__(self, device: Optional[BackendDevice] = None):
+    def __init__(self, channels: Tuple[int], device: Optional[BackendDevice] = None):
         super().__init__()
         image_channels = 3
-        down_channels = (16, 32)
+        down_channels = sorted(channels)
         up_channels = down_channels[::-1]
         out_dim = 1
         time_emb_dim = 16
